@@ -1,0 +1,697 @@
+<!doctype html>
+
+<html lang="en">  
+<head>  
+<meta charset="utf-8" />  
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />  
+<title>Perfect Orbit</title>  
+<style>  
+  :root{  
+    /* MAX 3 COLORS */  
+    --bg:#0B0F14;      /* base 1 */  
+    --fg:#E6E6E6;      /* base 2 */  
+    --good:#00E676;    /* good thing happened */  
+  }  
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}  
+  canvas{display:block; width:100vw; height:100vh; touch-action:manipulation;}  
+  .hud{  
+    position:fixed; inset:0; pointer-events:none;  
+    display:flex; flex-direction:column; justify-content:space-between;  
+    padding:14px;  
+  }  
+  .toprow{display:flex; justify-content:space-between; align-items:flex-start; gap:12px;}  
+  .stat{line-height:1.1}  
+  .stat .label{opacity:.75; font-size:12px; letter-spacing:.08em; text-transform:uppercase;}  
+  .stat .value{font-weight:700; font-size:20px;}  
+  .centerMsg{  
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);  
+    text-align:center; width:min(540px,92vw);  
+    pointer-events:none;  
+  }  
+  .title{font-weight:800; font-size:34px; letter-spacing:.02em;}  
+  .subtitle{opacity:.85; margin-top:8px; font-size:15px; line-height:1.35;}  
+  .ctaRow{  
+    margin-top:14px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;  
+  }  
+  .pill{  
+    pointer-events:auto;  
+    border:1px solid color-mix(in oklab, var(--fg) 40%, transparent);  
+    color:var(--fg);  
+    background:transparent;  
+    padding:10px 14px;  
+    border-radius:999px;  
+    font-weight:650;  
+    letter-spacing:.01em;  
+    cursor:pointer;  
+  }  
+  .pill:active{transform:scale(.98);}  
+  .pill.good{border-color:color-mix(in oklab, var(--good) 70%, transparent); color:var(--good);}  
+  .bottomrow{display:flex; justify-content:space-between; align-items:flex-end; gap:12px;}  
+  .meter{  
+    width:min(260px,46vw);  
+    height:10px;  
+    border-radius:999px;  
+    border:1px solid color-mix(in oklab, var(--fg) 40%, transparent);  
+    overflow:hidden;  
+  }  
+  .fill{height:100%; width:0%; background:var(--fg);}  
+  .hint{opacity:.8; font-size:12px; text-align:right; line-height:1.3;}  
+  .goodFlash{  
+    position:fixed; inset:0; pointer-events:none; opacity:0; background:var(--good);  
+    mix-blend-mode:screen;  
+  }  
+</style>  
+</head>  
+<body>  
+<canvas id="c"></canvas>  <div class="goodFlash" id="goodFlash"></div>  <div class="hud">  
+  <div class="toprow">  
+    <div class="stat">  
+      <div class="label">Rings Escaped</div>  
+      <div class="value" id="score">0</div>  
+    </div>  
+    <div class="stat" style="text-align:right;">  
+      <div class="label">Best</div>  
+      <div class="value" id="best">0</div>  
+    </div>  
+  </div>    <div class="centerMsg" id="centerMsg">  
+    <div class="title">Perfect Orbit</div>  
+    <div class="subtitle">  
+      Watch the gaps align. <b>Tap</b> to reverse orbit direction.<br/>  
+      If your angle matches the gap, the ball slips outward — sometimes through <b>multiple rings at once</b>.  
+      <br/><span style="opacity:.85">(Spamming taps builds “heat” and makes timing harder.)</span>  
+    </div>  
+    <div class="ctaRow">  
+      <button class="pill good" id="btnStart">Start</button>  
+      <button class="pill" id="btnExpert">Expert: Off</button>  
+      <button class="pill" id="btnReset">Reset Best</button>  
+    </div>  
+  </div>    <div class="bottomrow">  
+    <div>  
+      <div class="stat">  
+        <div class="label">Chain</div>  
+        <div class="value" id="chain">x1</div>  
+      </div>  
+      <div class="meter" title="Heat (tap-spam penalty)">  
+        <div class="fill" id="heatFill"></div>  
+      </div>  
+      <div class="stat" style="margin-top:6px;">  
+        <div class="label">Heat</div>  
+        <div class="value" id="heatText">0%</div>  
+      </div>  
+    </div>  
+    <div class="hint">  
+      <div><b>Goal:</b> escape as many rings as possible.</div>  
+      <div><b>Sweet spot:</b> wait ~3–4s, then one meaningful tap.</div>  
+    </div>  
+  </div>  
+</div> 
+
+
+
+
+
+
+
+
+
+
+
+<script>
+(() => {
+  // ======= PALETTE =======
+  const COL_BG   = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  const COL_FG   = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim();
+  const COL_GOOD = getComputedStyle(document.documentElement).getPropertyValue('--good').trim();
+
+  // “Heat” hot color (used for UI + ball tint). This is an extra tint on purpose.
+  const COL_HOT  = '#FF3B30';
+
+  // ======= CANVAS SETUP =======
+
+
+
+  const state = {
+    cx: 0, cy: 0,
+
+    escaped: 0,
+    rings: new Map(),
+
+    ballAngle: 0,
+    ballDir: 1,
+    orbitSpeed: 0,
+
+    score: 0,
+    chain: 1,
+    chainTimer: 0,
+
+    heat: 0, // 0..1
+
+    // Perfect streak (kept from your working build)
+    perfectStreak: 0,
+    bestPerfectStreak: 0,
+
+    timeInRing: 0,
+    maxRingTime: 8.0,
+
+    shake: 0,
+    particles: [],
+
+    // Layout (screen-space)
+    R_inner: 0,
+    gapPx: 0,
+    baseThickness: 0,
+    ballRadius: 0,
+  };
+ 
+
+  
+const WINDOW = {
+    PAST: 2,     // was 3
+    FUTURE: 4,   // was 5
+    focus: 0
+  };
+  
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    W = Math.floor(innerWidth);
+    H = Math.floor(innerHeight);
+    canvas.width  = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    setLayoutConstants(); // keep layout responsive
+  }
+  addEventListener('resize', resize, { passive: true });
+  resize();
+
+  // ======= UI =======
+  const elScore = document.getElementById('score');
+  const elBest  = document.getElementById('best');
+  const elChain = document.getElementById('chain');
+  const elHeatFill = document.getElementById('heatFill');
+  const elHeatText = document.getElementById('heatText');
+  const centerMsg = document.getElementById('centerMsg');
+  const btnStart = document.getElementById('btnStart');
+  const btnExpert = document.getElementById('btnExpert');
+  const btnReset = document.getElementById('btnReset');
+  const goodFlash = document.getElementById('goodFlash');
+
+  const LS_BEST = 'perfect_orbit_best_v1';
+  const LS_EXPERT = 'perfect_orbit_expert_v1';
+  let best = +(localStorage.getItem(LS_BEST) || 0);
+  let expert = (localStorage.getItem(LS_EXPERT) === '1');
+  elBest.textContent = best;
+  btnExpert.textContent = `Expert: ${expert ? 'On' : 'Off'}`;
+
+  btnExpert.addEventListener('click', () => {
+    expert = !expert;
+    localStorage.setItem(LS_EXPERT, expert ? '1' : '0');
+    btnExpert.textContent = `Expert: ${expert ? 'On' : 'Off'}`;
+  });
+
+  btnReset.addEventListener('click', () => {
+    best = 0;
+    localStorage.setItem(LS_BEST, '0');
+    elBest.textContent = '0';
+  });
+
+  // ======= HELPERS =======
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  function angNorm(a){
+    a %= (Math.PI*2);
+    if (a < -Math.PI) a += Math.PI*2;
+    if (a >  Math.PI) a -= Math.PI*2;
+    return a;
+  }
+  function angDiff(a,b){ return angNorm(a-b); }
+
+  function flashGood(){
+    goodFlash.style.transition = 'none';
+    goodFlash.style.opacity = '0.18';
+    requestAnimationFrame(() => {
+      goodFlash.style.transition = 'opacity 220ms ease';
+      goodFlash.style.opacity = '0';
+    });
+  }
+
+  // --- color utils (robust enough for #RRGGBB / rgb()) ---
+  function parseToRGB(c){
+  c = (c || '#E6E6E6').trim();
+  if(c[0] === '#'){
+    const hex = c.slice(1);
+    if(hex.length === 6){
+      return {
+        r: parseInt(hex.slice(0,2), 16),
+        g: parseInt(hex.slice(2,4), 16),
+        b: parseInt(hex.slice(4,6), 16)
+      };
+    }
+  }
+  return {r:230,g:230,b:230};
+}
+
+
+  const FG_RGB  = parseToRGB(COL_FG);
+  const HOT_RGB = {r:255,g:59,b:48};
+
+  function mixRGB(a,b,t){
+    t = clamp(t,0,1);
+    const r = Math.round(lerp(a.r, b.r, t));
+    const g = Math.round(lerp(a.g, b.g, t));
+    const b2= Math.round(lerp(a.b, b.b, t));
+    return `rgb(${r},${g},${b2})`;
+  }
+
+  function heatColor(t){
+    // start close to FG, end at HOT
+    // (nonlinear makes it feel “calm” until mid heat, then ramps)
+    const tt = t*t;
+    return mixRGB(FG_RGB, HOT_RGB, tt);
+  }
+
+  // ======= RENDER WINDOW (LESS RINGS) =======
+  
+
+  function easeToward(curr, target, hz, dt){
+    const a = 1 - Math.exp(-hz * dt);
+    return curr + (target - curr) * a;
+  }
+
+  // ======= GAME STATE =======
+  let running = false;
+  let lastT = performance.now();
+
+  // Don’t render gameplay behind the start UI
+  let renderEnabled = false;
+
+
+  
+  
+  function setLayoutConstants(){
+    const minDim = Math.min(W,H);
+    const aspect = W / Math.max(1, H);
+
+    // thicker + wider spacing
+    const thickness = Math.max(7, Math.floor(minDim * 0.016));
+    const gapPx = minDim * 0.072; // more spacing than before
+
+    // Outer radius cap:
+    // - Tall screens: let it grow but always fit (keep margins)
+    // - Wide screens: keep it small so it doesn’t dominate (roughly <= half-screen diameter)
+    let outerCap;
+    if(aspect >= 1.15){
+      outerCap = minDim * 0.25; // wide: radius ~ 25% of minDim (diameter ~ 50%)
+    } else if(aspect <= 0.90){
+      outerCap = minDim * 0.46; // tall: big but still fits (with HUD padding)
+    } else {
+      outerCap = minDim * 0.38; // neutral
+    }
+
+    // Choose inner radius so the biggest (furthest) visible ring fits the cap
+    // We render up to current + FUTURE, so outer ring index offset ~ FUTURE
+    const minInner = minDim * 0.10;
+    let R_inner = outerCap - WINDOW.FUTURE * gapPx;
+    R_inner = Math.max(minInner, R_inner);
+
+    state.gapPx = gapPx;
+    state.R_inner = R_inner;
+    state.baseThickness = thickness;
+    state.ballRadius = Math.max(6, minDim * 0.013);
+  }
+
+  // ======= RINGS =======
+  function ringParamsForIndex(i){
+    // gap never shrinks (constant)
+    const gapWidth = expert ? 0.42 : 0.56;
+
+    // difficulty from speed only
+    const rotSpeed =
+      (Math.random() < 0.5 ? -1 : 1) *
+      rand(0.40, expert ? 1.35 : 1.05) *
+      (1 + i*0.06);
+
+    const drift = rand(0.0, expert ? 0.085 : 0.055);
+    return { gapWidth, rotSpeed, drift };
+  }
+
+  function ensureRing(i){
+    if(state.rings.has(i)) return;
+    const { gapWidth, rotSpeed, drift } = ringParamsForIndex(i);
+    state.rings.set(i, {
+      i,
+      gapCenter: rand(0, Math.PI*2),
+      gapWidth,
+      rotSpeed,
+      drift
+    });
+  }
+
+  function pruneRings(){
+    const start = Math.max(0, state.escaped - WINDOW.PAST);
+    const end   = state.escaped + WINDOW.FUTURE;
+    for(const k of state.rings.keys()){
+      if(k < start || k > end) state.rings.delete(k);
+    }
+  }
+
+  function ensureWindow(){
+    const start = Math.max(0, state.escaped - WINDOW.PAST);
+    const end   = state.escaped + WINDOW.FUTURE;
+    for(let i=start;i<=end;i++) ensureRing(i);
+    pruneRings();
+  }
+
+  function screenRadiusForIndex(i){
+    return state.R_inner + (i - WINDOW.focus) * state.gapPx;
+  }
+
+  function effectiveGapWidth(r){
+    return clamp(r.gapWidth, 0.08, 0.95);
+  }
+
+  // ======= FX =======
+  function addParticles(x,y, n=16, size=2.2){
+    for(let i=0;i<n;i++){
+      const a = Math.random()*Math.PI*2;
+      const s = rand(90, 260);
+      state.particles.push({
+        x,y,
+        vx: Math.cos(a)*s,
+        vy: Math.sin(a)*s,
+        life: rand(0.22,0.52),
+        r: size * rand(0.85, 1.35)
+      });
+    }
+  }
+
+  // ======= UI / GAME FLOW =======
+  function setHeatUI(){
+    const pct = Math.round(state.heat*100);
+    elHeatFill.style.width = pct + '%';
+    elHeatText.textContent = pct + '%';
+
+    // Heat becomes fiery (bar color shifts with heat)
+    elHeatFill.style.background = heatColor(state.heat);
+  }
+
+  function resetGame(){
+    state.cx = W/2;
+    state.cy = H/2;
+
+    state.rings.clear();
+    state.escaped = 0;
+
+    state.ballAngle = rand(0, Math.PI*2);
+    state.ballDir = 1;
+
+    state.score = 0;
+    state.chain = 1;
+    state.chainTimer = 0;
+
+    state.heat = 0;
+
+    state.perfectStreak = 0;
+    state.bestPerfectStreak = 0;
+
+    state.timeInRing = 0;
+    state.maxRingTime = expert ? 6.0 : 7.5;
+
+    state.shake = 0;
+    state.particles.length = 0;
+
+    WINDOW.focus = 0;
+    ensureWindow();
+
+    elScore.textContent = '0';
+    elChain.textContent = 'x1';
+    setHeatUI();
+  }
+
+  function endGame(reason){
+    running = false;
+    centerMsg.style.display = 'block';
+
+    let headline = 'Run Over';
+    let line1 = `You escaped <b>${state.score}</b> rings.`;
+    if(reason === 'burn'){
+      headline = 'You Burned Up';
+      line1 = `You <b>burned up</b> after escaping <b>${state.score}</b> rings.`;
+    } else if(reason === 'time'){
+      headline = 'Out of Time';
+      line1 = `You <b>ran out of time</b> after escaping <b>${state.score}</b> rings.`;
+    }
+
+    const perfectLine = state.bestPerfectStreak > 0
+      ? `<br/>Best Perfect: <b>x${state.bestPerfectStreak}</b>`
+      : ``;
+
+    document.querySelector('.title').textContent = headline;
+    document.querySelector('.subtitle').innerHTML =
+      `${line1}${perfectLine}<br/>Tap <b>Start</b> to try again — you can always do better.`;
+
+    if(state.score > best){
+      best = state.score;
+      localStorage.setItem(LS_BEST, String(best));
+      elBest.textContent = String(best);
+    }
+  }
+
+  function start(){
+    setLayoutConstants();
+    resetGame();
+    running = true;
+    renderEnabled = true; // render gameplay only after click
+    centerMsg.style.display = 'none';
+    lastT = performance.now();
+  }
+
+  btnStart.addEventListener('click', () => {
+    document.querySelector('.title').textContent = 'Perfect Orbit';
+    document.querySelector('.subtitle').innerHTML =
+      `Watch the gaps align. <b>Tap</b> to reverse orbit direction.<br/>
+       If your angle matches the gap, the ball slips outward — sometimes through <b>multiple rings at once</b>.
+       <br/><span style="opacity:.85">(Spamming taps builds “heat” and makes timing harder.)</span>`;
+    start();
+  });
+
+  // ======= INPUT =======
+  function onTap(){
+    if(!running) return;
+
+    state.ballDir *= -1;
+
+    // More impactful heat
+    const add = expert ? 0.18 : 0.15;
+    state.heat = clamp(state.heat + add, 0, 1);
+    setHeatUI();
+
+    state.shake = Math.min(12, state.shake + 6);
+
+    // Burn death
+    if(state.heat >= 1){
+      endGame('burn');
+    }
+  }
+
+  addEventListener('pointerdown', (e) => {
+    const t = e.target;
+    if(t && t.classList && t.classList.contains('pill')) return;
+    onTap();
+  }, {passive:true});
+
+  addEventListener('keydown', (e) => {
+    if(e.code === 'Space' || e.code === 'Enter') onTap();
+  });
+
+  // ======= STEP =======
+  function step(dt){
+    ensureWindow();
+
+    // Heat decay (slower so it matters)
+    const heatDecay = expert ? 0.11 : 0.09; // was ~0.14–0.18
+    state.heat = clamp(state.heat - heatDecay*dt, 0, 1);
+    setHeatUI();
+
+    // Orbit speed (IMPORTANT CHANGE):
+    // Heat HIGH => ball SLOW. Heat LOW => ball FAST.
+    const baseFast = (expert ? 2.15 : 1.65) + state.score * (expert ? 0.060 : 0.045);
+    const slowFactor = lerp(1.00, 0.45, state.heat); // 0 heat => 1x, 1 heat => 0.45x
+    state.orbitSpeed = baseFast * slowFactor;
+
+    // Rotate rings
+    for(const r of state.rings.values()){
+      const drift = (Math.random()-0.5) * r.drift;
+      r.gapCenter = (r.gapCenter + (r.rotSpeed + drift)*dt) % (Math.PI*2);
+    }
+
+    // Ball angle
+    state.ballAngle = (state.ballAngle + state.ballDir * state.orbitSpeed * dt) % (Math.PI*2);
+
+    // Timer / lose
+    state.timeInRing += dt;
+    const timeLimit = Math.max(2.6, state.maxRingTime - state.score*(expert ? 0.08 : 0.06));
+    if(state.timeInRing > timeLimit){
+      endGame('time');
+      return;
+    }
+
+    // Chain timer
+    state.chainTimer = Math.max(0, state.chainTimer - dt);
+    if(state.chainTimer === 0) state.chain = 1;
+
+    // Escape / chain
+    let escapedThisFrame = 0;
+    while(true){
+      ensureWindow();
+      const r = state.rings.get(state.escaped);
+      if(!r) break;
+
+      const gw = effectiveGapWidth(r);
+      const d = Math.abs(angDiff(state.ballAngle, r.gapCenter));
+
+      if(d <= gw*0.5){
+        // Perfect logic: if timer fill never exceeded 5% since last escape
+        const frac = clamp(state.timeInRing / Math.max(0.0001, timeLimit), 0, 1);
+        if(frac <= 0.05){
+          state.perfectStreak += 1;
+        } else {
+          state.perfectStreak = 0;
+        }
+        state.bestPerfectStreak = Math.max(state.bestPerfectStreak, state.perfectStreak);
+
+        // FX
+        const sr = screenRadiusForIndex(state.escaped);
+        flashGood();
+        state.shake = Math.min(18, state.shake + 9);
+
+        const perf = state.perfectStreak;
+        const n = 16 + (escapedThisFrame * 6) + Math.min(80, perf * 10);
+        const size = 2.4 + Math.min(6.0, perf * 0.8);
+
+        addParticles(
+          state.cx + Math.cos(state.ballAngle)*sr,
+          state.cy + Math.sin(state.ballAngle)*sr,
+          n,
+          size
+        );
+
+        // Advance
+        state.escaped++;
+        state.score++;
+        escapedThisFrame++;
+        state.timeInRing = 0;
+
+        // Chain
+        state.chainTimer = 1.15;
+        state.chain = Math.min(9, state.chain + 1);
+
+        ensureWindow();
+        continue;
+      }
+      break;
+    }
+
+    if(escapedThisFrame > 0){
+      elScore.textContent = String(state.score);
+      elChain.textContent = 'x' + String(state.chain);
+    }
+    
+    setHeatUI();
+    
+
+    // Particles update
+    for(let i=state.particles.length-1;i>=0;i--){
+      const p = state.particles[i];
+      p.life -= dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      p.vx *= (1 - 2.6*dt);
+      p.vy *= (1 - 2.6*dt);
+      if(p.life <= 0) state.particles.splice(i,1);
+    }
+
+    // Shake decay
+    state.shake *= (1 - 8*dt);
+
+    // Sliding recentre
+    const minDim = Math.min(W,H);
+    const safeOuter = minDim * 0.42;
+    const curR = screenRadiusForIndex(state.escaped);
+
+    const edgeRatio = curR / Math.max(1, safeOuter);
+    const urgency = clamp((edgeRatio - 0.75) / 0.25, 0, 1);
+    const followHz = 0.65 + 2.4 * (urgency * urgency);
+
+    WINDOW.focus = easeToward(WINDOW.focus, state.escaped, followHz, dt);
+    ensureWindow();
+
+    // Burn check (decay + taps can both hit 1, but taps already check)
+    if(state.heat >= 1){
+      endGame('burn');
+    }
+  }
+
+  // ======= DRAW =======
+  function draw(){
+    ctx.fillStyle = COL_BG;
+    ctx.fillRect(0,0,W,H);
+
+    if(!renderEnabled) return;
+
+    const s = state.shake;
+    const ox = (Math.random()-0.5)*s;
+    const oy = (Math.random()-0.5)*s;
+
+    const cx = state.cx + ox;
+    const cy = state.cy + oy;
+
+    ensureWindow();
+
+    const start = Math.max(0, state.escaped - WINDOW.PAST);
+    const end   = state.escaped + WINDOW.FUTURE;
+
+    ctx.lineCap = 'round';
+
+    // Rings
+    for(let i=start;i<=end;i++){
+      const r = state.rings.get(i);
+      if(!r) continue;
+
+      const gw = effectiveGapWidth(r);
+      const startGap = r.gapCenter - gw/2;
+      const endGap   = r.gapCenter + gw/2;
+
+      const sr = screenRadiusForIndex(i);
+
+      let alpha = 0.85;
+      if(i < state.escaped){
+        const age = state.escaped - i;
+        alpha = clamp(0.34 - (age-1)*0.12, 0.10, 0.34);
+      } else if(i === state.escaped){
+        alpha = 0.95;
+      } else {
+        const ahead = i - state.escaped;
+        alpha = clamp(0.88 - (ahead-1)*0.10, 0.40, 0.88);
+      }
+
+      if(sr < 8) continue;
+
+      ctx.strokeStyle = COL_FG;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = state.baseThickness;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, sr, endGap, startGap + Math.PI*2, false);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Bal
