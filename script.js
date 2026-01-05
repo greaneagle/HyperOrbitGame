@@ -4,8 +4,23 @@
   const COL_FG   = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim();
   const COL_GOOD = getComputedStyle(document.documentElement).getPropertyValue('--good').trim();
 
-  // “Heat” hot color (used for UI + ball tint). This is an extra tint on purpose.
+  // "Heat" hot color (used for UI + ball tint). This is an extra tint on purpose.
   const COL_HOT  = '#FF3B30';
+
+  // ======= SPEED CONFIGURATION =======
+  // Ball orbit speed
+  const BALL_SPEED_BASE_NORMAL = 1.15;      // Base speed in normal mode
+  const BALL_SPEED_BASE_EXPERT = 1.45;      // Base speed in expert mode
+  const BALL_SPEED_INCREASE_NORMAL = 0.018; // Speed increase per score in normal mode
+  const BALL_SPEED_INCREASE_EXPERT = 0.025; // Speed increase per score in expert mode
+  const BALL_SPEED_MAX = 3.5;               // Maximum ball orbit speed cap
+
+  // Ring rotation speed
+  const RING_SPEED_MIN = 0.40;              // Minimum ring rotation speed
+  const RING_SPEED_MAX_NORMAL = 1.05;       // Maximum initial ring speed (normal mode)
+  const RING_SPEED_MAX_EXPERT = 1.35;       // Maximum initial ring speed (expert mode)
+  const RING_SPEED_INCREASE = 0.06;         // Speed multiplier increase per ring index
+  const RING_SPEED_ABSOLUTE_MAX = 3.0;      // Absolute maximum ring rotation speed cap
 
   // ======= CANVAS SETUP =======
   const state = {
@@ -214,10 +229,12 @@
     const gapWidth = expert ? 0.42 : 0.56;
 
     // difficulty from speed only
-    const rotSpeed =
+    const maxSpeed = expert ? RING_SPEED_MAX_EXPERT : RING_SPEED_MAX_NORMAL;
+    const baseRotSpeed =
       (Math.random() < 0.5 ? -1 : 1) *
-      rand(0.40, expert ? 1.35 : 1.05) *
-      (1 + i*0.06);
+      rand(RING_SPEED_MIN, maxSpeed) *
+      (1 + i * RING_SPEED_INCREASE);
+    const rotSpeed = Math.min(Math.abs(baseRotSpeed), RING_SPEED_ABSOLUTE_MAX) * Math.sign(baseRotSpeed);
 
     const drift = rand(0.0, expert ? 0.085 : 0.055);
 
@@ -438,7 +455,9 @@
 
     // Orbit speed (IMPORTANT CHANGE):
     // Heat HIGH => ball SLOW. Heat LOW => ball FAST.
-    const baseFast = (expert ? 1.45 : 1.15) + state.score * (expert ? 0.025 : 0.018);
+    const baseSpeed = expert ? BALL_SPEED_BASE_EXPERT : BALL_SPEED_BASE_NORMAL;
+    const speedIncrease = expert ? BALL_SPEED_INCREASE_EXPERT : BALL_SPEED_INCREASE_NORMAL;
+    const baseFast = Math.min(baseSpeed + state.score * speedIncrease, BALL_SPEED_MAX);
     const slowFactor = lerp(1.00, 0.45, state.heat); // 0 heat => 1x, 1 heat => 0.45x
     state.orbitSpeed = baseFast * slowFactor;
 
