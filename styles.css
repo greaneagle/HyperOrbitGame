@@ -29,6 +29,7 @@ canvas {
   flex-direction: column;
   justify-content: space-between;
   padding: 14px;
+  z-index: 2;
 }
 
 .toprow {
@@ -52,6 +53,7 @@ canvas {
 .stat .value {
   font-weight: 700;
   font-size: 20px;
+  transition: transform 0.2s ease;
 }
 
 .centerMsg {
@@ -141,4 +143,13 @@ canvas {
   opacity: 0;
   background: var(--good);
   mix-blend-mode: screen;
+}
+
+.darkOverlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: #000;
+  z-index: 1;
 }

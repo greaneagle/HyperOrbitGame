@@ -21,6 +21,7 @@
     score: 0,
     chain: 1,
     chainTimer: 0,
+    timeSinceLastEscape: 999,  // Track time since last escape for chaining
 
     heat: 0, // 0..1
 
@@ -33,6 +34,15 @@
 
     shake: 0,
     particles: [],
+    scorePops: [],
+
+    // Multi-ring escape animation
+    pendingEscapes: [],
+    escapeTweenProgress: 0,
+    escapeTweenDuration: 0,
+    escapeTargetEscaped: 0,
+    ballTweenRadius: 0,
+    ringGlows: new Map(),
 
     // Layout (screen-space)
     R_inner: 0,
@@ -76,6 +86,7 @@
   const btnExpert = document.getElementById('btnExpert');
   const btnReset = document.getElementById('btnReset');
   const goodFlash = document.getElementById('goodFlash');
+  const darkOverlay = document.getElementById('darkOverlay');
 
   const LS_BEST = 'perfect_orbit_best_v1';
   const LS_EXPERT = 'perfect_orbit_expert_v1';
@@ -209,18 +220,39 @@
       (1 + i*0.06);
 
     const drift = rand(0.0, expert ? 0.085 : 0.055);
-    return { gapWidth, rotSpeed, drift };
+
+    // Obstacle logic: after ring 50, chance increases from 10% to 20% over 200 rings
+    let hasObstacle = false;
+    let obstacleAngle = 0;
+    if(i >= 50){
+      const progress = Math.min(1, (i - 50) / 200); // 0 at ring 50, 1 at ring 250
+      const obstacleChance = 0.10 + progress * 0.10; // 10% to 20%
+      if(Math.random() < obstacleChance){
+        hasObstacle = true;
+        // Place obstacle away from gap (at least 90 degrees away)
+        const minSeparation = Math.PI / 2;
+        const maxSeparation = Math.PI * 2 - gapWidth - minSeparation;
+        obstacleAngle = rand(minSeparation, maxSeparation);
+      }
+    }
+
+    // Reduce ring speed by 50% if it has an obstacle
+    const finalRotSpeed = hasObstacle ? rotSpeed * 0.5 : rotSpeed;
+
+    return { gapWidth, rotSpeed: finalRotSpeed, drift, hasObstacle, obstacleAngle };
   }
 
   function ensureRing(i){
     if(state.rings.has(i)) return;
-    const { gapWidth, rotSpeed, drift } = ringParamsForIndex(i);
+    const { gapWidth, rotSpeed, drift, hasObstacle, obstacleAngle } = ringParamsForIndex(i);
     state.rings.set(i, {
       i,
       gapCenter: rand(0, Math.PI*2),
       gapWidth,
       rotSpeed,
-      drift
+      drift,
+      hasObstacle,
+      obstacleAngle
     });
   }
 
@@ -285,6 +317,7 @@
     state.score = 0;
     state.chain = 1;
     state.chainTimer = 0;
+    state.timeSinceLastEscape = 999;
 
     state.heat = 0;
 
@@ -296,6 +329,14 @@
 
     state.shake = 0;
     state.particles.length = 0;
+    state.scorePops.length = 0;
+
+    state.pendingEscapes = [];
+    state.escapeTweenProgress = 0;
+    state.escapeTweenDuration = 0;
+    state.escapeTargetEscaped = 0;
+    state.ballTweenRadius = 0;
+    state.ringGlows.clear();
 
     WINDOW.focus = 0;
     ensureWindow();
@@ -307,6 +348,7 @@
 
   function endGame(reason){
     running = false;
+    darkOverlay.style.opacity = '0.7';
     centerMsg.style.display = 'block';
 
     let headline = 'Run Over';
@@ -317,6 +359,9 @@
     } else if(reason === 'time'){
       headline = 'Out of Time';
       line1 = `You <b>ran out of time</b> after escaping <b>${state.score}</b> rings.`;
+    } else if(reason === 'obstacle'){
+      headline = 'Hit Obstacle';
+      line1 = `You <b>hit an obstacle</b> after escaping <b>${state.score}</b> rings.`;
     }
 
     const perfectLine = state.bestPerfectStreak > 0
@@ -339,6 +384,7 @@
     resetGame();
     running = true;
     renderEnabled = true; // render gameplay only after click
+    darkOverlay.style.opacity = '0';
     centerMsg.style.display = 'none';
     lastT = performance.now();
   }
@@ -392,21 +438,102 @@
 
     // Orbit speed (IMPORTANT CHANGE):
     // Heat HIGH => ball SLOW. Heat LOW => ball FAST.
-    const baseFast = (expert ? 2.15 : 1.65) + state.score * (expert ? 0.060 : 0.045);
+    const baseFast = (expert ? 1.45 : 1.15) + state.score * (expert ? 0.025 : 0.018);
     const slowFactor = lerp(1.00, 0.45, state.heat); // 0 heat => 1x, 1 heat => 0.45x
     state.orbitSpeed = baseFast * slowFactor;
 
-    // Rotate rings
-    for(const r of state.rings.values()){
-      const drift = (Math.random()-0.5) * r.drift;
-      r.gapCenter = (r.gapCenter + (r.rotSpeed + drift)*dt) % (Math.PI*2);
+    // Rotate rings (freeze during multi-ring animation)
+    if(state.pendingEscapes.length === 0){
+      for(const r of state.rings.values()){
+        const drift = (Math.random()-0.5) * r.drift;
+        r.gapCenter = (r.gapCenter + (r.rotSpeed + drift)*dt) % (Math.PI*2);
+      }
     }
 
     // Ball angle
     state.ballAngle = (state.ballAngle + state.ballDir * state.orbitSpeed * dt) % (Math.PI*2);
 
-    // Timer / lose
+    // Multi-ring escape animation
+    if(state.pendingEscapes.length > 0){
+      state.escapeTweenProgress = clamp(state.escapeTweenProgress + dt / state.escapeTweenDuration, 0, 1);
+
+      // Interpolate ball radius
+      const startR = screenRadiusForIndex(state.escaped);
+      const endR = screenRadiusForIndex(state.escapeTargetEscaped);
+      state.ballTweenRadius = lerp(startR, endR, state.escapeTweenProgress);
+
+      // Update glows
+      for(const [i, glow] of state.ringGlows){
+        glow.fade *= (1 - 1.5 * dt);
+        glow.hueOffset = (glow.hueOffset + 360 * dt) % 360;
+      }
+
+      // Spawn rainbow trail particles during animation
+      if(Math.random() < 0.3){
+        const bx = state.cx + Math.cos(state.ballAngle) * state.ballTweenRadius;
+        const by = state.cy + Math.sin(state.ballAngle) * state.ballTweenRadius;
+
+        // Slow global rainbow shift with variation
+        const hue = (Date.now() / 15 + rand(-20, 20)) % 360;
+
+        for(let i = 0; i < 3; i++){
+          const a = Math.random() * Math.PI * 2;
+          const s = rand(90, 260);
+          state.particles.push({
+            x: bx,
+            y: by,
+            vx: Math.cos(a) * s,
+            vy: Math.sin(a) * s,
+            life: rand(0.22, 0.52),
+            r: 1.5 * rand(0.85, 1.35),
+            hue: hue
+          });
+        }
+      }
+
+      // Complete animation
+      if(state.escapeTweenProgress >= 1){
+        // NOW advance state.escaped to match the target
+        state.escaped = state.escapeTargetEscaped;
+        state.pendingEscapes = [];
+        state.escapeTweenProgress = 0;
+        state.ballTweenRadius = 0;
+
+        // Final burst
+        const sr = screenRadiusForIndex(state.escaped);
+        addParticles(
+          state.cx + Math.cos(state.ballAngle)*sr,
+          state.cy + Math.sin(state.ballAngle)*sr,
+          40,
+          3.5
+        );
+
+        ensureWindow();
+      }
+    }
+
+    // Obstacle collision check
+    const currentRing = state.rings.get(state.escaped);
+    if(currentRing && currentRing.hasObstacle){
+      // Triangle size: 75% of gap between rings
+      const triangleSize = state.gapPx * 0.75;
+      const triangleAngleWidth = triangleSize / screenRadiusForIndex(state.escaped);
+
+      // Obstacle rotates with the ring
+      const obstacleCurrentAngle = currentRing.gapCenter + currentRing.obstacleAngle;
+      const obsDiff = Math.abs(angDiff(state.ballAngle, obstacleCurrentAngle));
+      if(obsDiff <= triangleAngleWidth * 0.5){
+        endGame('obstacle');
+        return;
+      }
+    }
+
+    // Track time since last escape for chain detection
+    state.timeSinceLastEscape += dt;
+
+    // Always increment timeInRing
     state.timeInRing += dt;
+
     const timeLimit = Math.max(2.6, state.maxRingTime - state.score*(expert ? 0.08 : 0.06));
     if(state.timeInRing > timeLimit){
       endGame('time');
@@ -417,61 +544,137 @@
     state.chainTimer = Math.max(0, state.chainTimer - dt);
     if(state.chainTimer === 0) state.chain = 1;
 
-    // Escape / chain
-    let escapedThisFrame = 0;
-    while(true){
-      ensureWindow();
-      const r = state.rings.get(state.escaped);
-      if(!r) break;
+    // Escape / chain (only skip if animating)
+    if(state.pendingEscapes.length === 0){
+      const timeLimit = Math.max(2.6, state.maxRingTime - state.score*(expert ? 0.08 : 0.06));
 
-      const gw = effectiveGapWidth(r);
-      const d = Math.abs(angDiff(state.ballAngle, r.gapCenter));
+      // Spatial chain: raycast ahead for aligned rings
+      const maxChainCheck = 6;  // Cap chain length
+      const QUICK_ESCAPE_WINDOW = 0.5;  // Quick succession window for glow rewards (seconds)
 
-      if(d <= gw*0.5){
-        // Perfect logic: if timer fill never exceeded 5% since last escape
-        const frac = clamp(state.timeInRing / Math.max(0.0001, timeLimit), 0, 1);
-        if(frac <= 0.05){
+      let alignedRings = [];
+
+      // Check current ring and subsequent rings for alignment
+      for(let i = 0; i < maxChainCheck; i++){
+        const ringIndex = state.escaped + i;
+        ensureRing(ringIndex);
+        const r = state.rings.get(ringIndex);
+        if(!r) break;
+
+        const gw = effectiveGapWidth(r);
+        const d = Math.abs(angDiff(state.ballAngle, r.gapCenter));
+
+        // Check if ball is aligned with this ring's gap (exact alignment required)
+        if(d <= gw / 2){
+          alignedRings.push({index: ringIndex});
+        } else {
+          // First misaligned ring breaks the chain
+          break;
+        }
+      }
+
+      // Process escapes if any rings are aligned
+      if(alignedRings.length > 0){
+        let pending = alignedRings;
+        let escapedThisFrame = alignedRings.length;
+
+        // Check if this escape qualifies for quick succession glow BEFORE resetting timer
+        const isQuickSuccession = (state.timeSinceLastEscape <= QUICK_ESCAPE_WINDOW);
+
+        // Update perfect streak based on first ring timing
+        const firstRingFrac = clamp(state.timeInRing / Math.max(0.0001, timeLimit), 0, 1);
+        if(firstRingFrac <= 0.05){
           state.perfectStreak += 1;
         } else {
           state.perfectStreak = 0;
         }
         state.bestPerfectStreak = Math.max(state.bestPerfectStreak, state.perfectStreak);
 
-        // FX
-        const sr = screenRadiusForIndex(state.escaped);
-        flashGood();
-        state.shake = Math.min(18, state.shake + 9);
-
-        const perf = state.perfectStreak;
-        const n = 16 + (escapedThisFrame * 6) + Math.min(80, perf * 10);
-        const size = 2.4 + Math.min(6.0, perf * 0.8);
-
-        addParticles(
-          state.cx + Math.cos(state.ballAngle)*sr,
-          state.cy + Math.sin(state.ballAngle)*sr,
-          n,
-          size
-        );
-
-        // Advance
-        state.escaped++;
-        state.score++;
-        escapedThisFrame++;
+        // Update score immediately, but DON'T advance state.escaped yet (wait for animation)
+        state.score += escapedThisFrame;
         state.timeInRing = 0;
+        state.timeSinceLastEscape = 0;
 
-        // Chain
-        state.chainTimer = 1.15;
-        state.chain = Math.min(9, state.chain + 1);
+        if(pending.length > 1){
+          // Multi-ring chain: queue animation
+          state.pendingEscapes = pending;
+          state.escapeTweenDuration = (expert ? 0.12 : 0.15) + (pending.length - 1) * 0.05;
+          state.escapeTweenDuration = Math.min(state.escapeTweenDuration, 0.4);
+          state.escapeTweenProgress = 0;
+          state.escapeTargetEscaped = state.escaped + escapedThisFrame;
+          state.ballTweenRadius = screenRadiusForIndex(state.escaped);
 
-        ensureWindow();
-        continue;
+          // Haptic feedback (mobile)
+          if(navigator.vibrate){
+            const vibrateDuration = Math.min(50 * pending.length, 200);
+            navigator.vibrate([vibrateDuration, 30]);
+          }
+
+          // Add glows - multi-ring chains ALWAYS glow (they're inherently instant)
+          // OR if this follows a recent escape (quick succession)
+          state.ringGlows.clear();
+          if(isQuickSuccession || pending.length > 1){
+            for(const p of pending){
+              state.ringGlows.set(p.index, {hueOffset: rand(0, 360), fade: 1});
+            }
+          }
+
+          // Boost effects
+          state.shake = Math.min(25, state.shake + pending.length * 3);
+          flashGood();
+
+          // Chain
+          state.chainTimer = 1.15 * pending.length;
+          state.chain = Math.min(9, state.chain + pending.length);
+
+          // UI polish: scale chain display
+          const scaleAmount = 1.2 + Math.min(0.4, pending.length * 0.1);
+          elChain.style.transform = `scale(${scaleAmount})`;
+
+          // Reset after animation completes (300ms base + 50ms per ring)
+          const resetDelay = 300 + pending.length * 50;
+          setTimeout(() => {
+            elChain.style.transform = 'scale(1)';
+          }, resetDelay);
+
+          // Spawn floating "+X" popup
+          const scoreRect = elScore.getBoundingClientRect();
+          state.scorePops.push({
+            x: scoreRect.left + scoreRect.width / 2,
+            y: scoreRect.top + scoreRect.height / 2,
+            val: pending.length,
+            life: 1,
+            vy: -100
+          });
+
+        } else if(pending.length === 1){
+          // Single escape: use smooth animation
+          state.pendingEscapes = pending;
+          state.escapeTweenDuration = expert ? 0.10 : 0.12;
+          state.escapeTweenProgress = 0;
+          state.escapeTargetEscaped = state.escaped + escapedThisFrame;
+          state.ballTweenRadius = screenRadiusForIndex(state.escaped);
+
+          // Visual reward: glow if quick succession
+          if(isQuickSuccession){
+            state.ringGlows.clear();
+            state.ringGlows.set(pending[0].index, {hueOffset: rand(0, 360), fade: 1});
+          }
+
+          flashGood();
+          state.shake = Math.min(18, state.shake + 9);
+
+          // Chain
+          state.chainTimer = 1.15;
+          state.chain = Math.min(9, state.chain + 1);
+
+          ensureWindow();
+        }
+
+        // Update UI
+        elScore.textContent = String(state.score);
+        elChain.textContent = 'x' + String(state.chain);
       }
-      break;
-    }
-
-    if(escapedThisFrame > 0){
-      elScore.textContent = String(state.score);
-      elChain.textContent = 'x' + String(state.chain);
     }
 
     setHeatUI();
@@ -485,6 +688,15 @@
       p.vx *= (1 - 2.6*dt);
       p.vy *= (1 - 2.6*dt);
       if(p.life <= 0) state.particles.splice(i,1);
+    }
+
+    // Score popups update
+    for(let i=state.scorePops.length-1;i>=0;i--){
+      const pop = state.scorePops[i];
+      pop.life -= 2 * dt;
+      pop.y += pop.vy * dt;
+      pop.vy *= (1 - 1.5 * dt); // slow down
+      if(pop.life <= 0) state.scorePops.splice(i,1);
     }
 
     // Shake decay
@@ -529,6 +741,26 @@
 
     ctx.lineCap = 'round';
 
+    // Rainbow glows (for perfect multi-ring escapes)
+    for(const [i, glow] of state.ringGlows){
+      const r = state.rings.get(i);
+      if(!r) continue;
+
+      const sr = screenRadiusForIndex(i);
+      if(sr < 8) continue;
+
+      const gw = effectiveGapWidth(r);
+
+      ctx.strokeStyle = `hsl(${glow.hueOffset}, 100%, 60%)`;
+      ctx.globalAlpha = glow.fade * 0.8;
+      ctx.lineWidth = state.baseThickness * 1.8;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, sr, r.gapCenter - gw/2, r.gapCenter + gw/2, false);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
     // Rings
     for(let i=start;i<=end;i++){
       const r = state.rings.get(i);
@@ -563,10 +795,61 @@
     }
     ctx.globalAlpha = 1;
 
+    // Obstacles (white triangles)
+    for(let i=start;i<=end;i++){
+      const r = state.rings.get(i);
+      if(!r || !r.hasObstacle) continue;
+
+      const sr = screenRadiusForIndex(i);
+      if(sr < 8) continue;
+
+      // Triangle size: 75% of gap between rings
+      const triangleSize = state.gapPx * 0.75;
+
+      // Triangle points inward from the ring (rotates with ring's gap center)
+      const angle = r.gapCenter + r.obstacleAngle;
+      const outerX = cx + Math.cos(angle) * sr;
+      const outerY = cy + Math.sin(angle) * sr;
+      const innerX = cx + Math.cos(angle) * (sr - triangleSize);
+      const innerY = cy + Math.sin(angle) * (sr - triangleSize);
+
+      // Create triangle pointing inward
+      const halfWidth = triangleSize * 0.35; // width of triangle base
+      const perpAngle = angle + Math.PI / 2;
+
+      const baseX1 = outerX + Math.cos(perpAngle) * halfWidth;
+      const baseY1 = outerY + Math.sin(perpAngle) * halfWidth;
+      const baseX2 = outerX - Math.cos(perpAngle) * halfWidth;
+      const baseY2 = outerY - Math.sin(perpAngle) * halfWidth;
+
+      let alpha = 0.9;
+      if(i < state.escaped){
+        const age = state.escaped - i;
+        alpha = clamp(0.34 - (age-1)*0.12, 0.10, 0.34);
+      } else if(i === state.escaped){
+        alpha = 1.0;
+      } else {
+        const ahead = i - state.escaped;
+        alpha = clamp(0.88 - (ahead-1)*0.10, 0.40, 0.88);
+      }
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(innerX, innerY); // tip pointing inward
+      ctx.lineTo(baseX1, baseY1); // base corner 1
+      ctx.lineTo(baseX2, baseY2); // base corner 2
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
     // Ball (changes color with heat)
     const cr = state.rings.get(state.escaped);
     if(cr){
-      const rr = screenRadiusForIndex(state.escaped) * 0.94;
+      // Use tween radius if animating, otherwise normal radius
+      const baseR = state.ballTweenRadius > 0 ? state.ballTweenRadius : screenRadiusForIndex(state.escaped);
+      const rr = baseR * 0.94;
       const bx = cx + Math.cos(state.ballAngle)*rr;
       const by = cy + Math.sin(state.ballAngle)*rr;
 
@@ -576,14 +859,33 @@
       ctx.fill();
     }
 
-    // Particles (green)
-    ctx.fillStyle = COL_GOOD;
+    // Particles (green or rainbow)
     for(const p of state.particles){
       const a = clamp(p.life / 0.52, 0, 1);
       ctx.globalAlpha = a;
+
+      // Rainbow particles (from chain trails) or standard green
+      if(p.hue !== undefined){
+        ctx.fillStyle = `hsl(${p.hue}, 70%, 60%)`;
+      } else {
+        ctx.fillStyle = COL_GOOD;
+      }
+
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
       ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Score popups (floating "+X" text)
+    ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for(const pop of state.scorePops){
+      const alpha = clamp(pop.life, 0, 1);
+      ctx.fillStyle = COL_GOOD;
+      ctx.globalAlpha = alpha;
+      ctx.fillText(`+${pop.val}`, pop.x, pop.y);
     }
     ctx.globalAlpha = 1;
 
