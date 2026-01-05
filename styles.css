@@ -1,0 +1,144 @@
+:root {
+  /* MAX 3 COLORS */
+  --bg: #0B0F14;      /* base 1 */
+  --fg: #E6E6E6;      /* base 2 */
+  --good: #00E676;    /* good thing happened */
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  touch-action: manipulation;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.toprow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.stat {
+  line-height: 1.1;
+}
+
+.stat .label {
+  opacity: 0.75;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stat .value {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.centerMsg {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: min(540px, 92vw);
+  pointer-events: none;
+}
+
+.title {
+  font-weight: 800;
+  font-size: 34px;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  opacity: 0.85;
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.ctaRow {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  pointer-events: auto;
+  border: 1px solid color-mix(in oklab, var(--fg) 40%, transparent);
+  color: var(--fg);
+  background: transparent;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.pill:active {
+  transform: scale(0.98);
+}
+
+.pill.good {
+  border-color: color-mix(in oklab, var(--good) 70%, transparent);
+  color: var(--good);
+}
+
+.bottomrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.meter {
+  width: min(260px, 46vw);
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--fg) 40%, transparent);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  width: 0%;
+  background: var(--fg);
+}
+
+.hint {
+  opacity: 0.8;
+  font-size: 12px;
+  text-align: right;
+  line-height: 1.3;
+}
+
+.goodFlash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: var(--good);
+  mix-blend-mode: screen;
+}
