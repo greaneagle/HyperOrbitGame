@@ -276,7 +276,7 @@ Edit in `js/ab.js` (base values):
 
 ## 📝 License
 
-MIT License.
+MIT License...
 
 ---
 
