@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages (with Firebase config injection)
+name: Deploy to GitHub Pages (with Firebase config injection-)
 
 on:
   push:
