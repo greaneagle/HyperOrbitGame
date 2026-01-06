@@ -301,6 +301,9 @@ await initApp();
   const hintTitle = document.getElementById('hintTitle');
   const hintText = document.getElementById('hintText');
   const hintDismiss = document.getElementById('hintDismiss');
+  const achievementHintName = document.getElementById('achievementHintName');
+  const achievementHintDesc = document.getElementById('achievementHintDesc');
+  const achievementHintProgress = document.getElementById('achievementHintProgress');
 
   // Use playerData instead of localStorage directly
   let best = playerData.bestScore.endless;
@@ -514,6 +517,7 @@ await initApp();
     if (breakdown.critical > 0) breakdownText.push(`Critical: ${breakdown.critical}`);
     if (breakdown.modeBonus > 0) breakdownText.push(`Mode Bonus: ${breakdown.modeBonus}`);
     if (breakdown.missions > 0) breakdownText.push(`Missions: ${breakdown.missions}`);
+    if (breakdown.achievements > 0) breakdownText.push(`Achievements: ${breakdown.achievements}`);
     xpBreakdown.innerHTML = breakdownText.join(' • ');
 
     // Show level progress
@@ -671,6 +675,84 @@ await initApp();
     html += '</div>';
     lockerTabContent.innerHTML = html;
   }
+
+  // ======= ACHIEVEMENT HINT (Bottom Right) =======
+  async function updateAchievementHint() {
+    const achievements = await loadAchievements();
+
+    // Find first unfinished achievement
+    let nextAchievement = null;
+    let progressText = '';
+
+    for (const achievement of achievements) {
+      if (!playerData.unlocks.achievements.includes(achievement.id)) {
+        nextAchievement = achievement;
+
+        // Calculate progress based on achievement type
+        let current = 0;
+        let target = achievement.threshold;
+
+        switch (achievement.type) {
+          case 'rings':
+            current = state.score || 0;
+            progressText = `${current} / ${target} rings`;
+            break;
+          case 'bestScore':
+            const maxBest = Math.max(
+              playerData.bestScore.endless,
+              playerData.bestScore.daily,
+              playerData.bestScore.sprint || 0
+            );
+            current = maxBest;
+            progressText = `Best: ${current} / ${target}`;
+            break;
+          case 'maxChain':
+            current = state.runStats?.maxChain || state.chain || 1;
+            progressText = `Chain: x${current} / x${target}`;
+            break;
+          case 'criticalEscapes':
+            current = state.runStats?.criticalEscapes || 0;
+            progressText = `${current} / ${target} critical escapes`;
+            break;
+          case 'sprintComplete':
+            progressText = 'Complete Sprint 30';
+            break;
+          case 'sprintTime':
+            progressText = 'Complete Sprint 30 < 90s';
+            break;
+          case 'dailyStreak':
+            current = playerData.stats.dailyStreak || 0;
+            progressText = `${current} / ${target} days`;
+            break;
+          case 'level':
+            current = playerData.level;
+            progressText = `Level ${current} / ${target}`;
+            break;
+          case 'totalRuns':
+            current = playerData.stats.totalRuns;
+            progressText = `${current} / ${target} runs`;
+            break;
+          default:
+            progressText = achievement.desc;
+        }
+
+        break; // Only show first unfinished
+      }
+    }
+
+    if (nextAchievement) {
+      achievementHintName.textContent = `🏆 ${nextAchievement.name}`;
+      achievementHintDesc.textContent = nextAchievement.desc;
+      achievementHintProgress.textContent = progressText;
+    } else {
+      achievementHintName.textContent = '🎉 All Complete!';
+      achievementHintDesc.textContent = 'You unlocked everything!';
+      achievementHintProgress.textContent = '';
+    }
+  }
+
+  // Initialize achievement hint
+  updateAchievementHint();
 
   // Locker event listeners
   btnLocker.addEventListener('click', openLocker);
@@ -1521,6 +1603,9 @@ await initApp();
         // Update UI
         elScore.textContent = String(state.score);
         elChain.textContent = 'x' + String(state.chain);
+
+        // Update achievement hint
+        updateAchievementHint();
       }
     }
 

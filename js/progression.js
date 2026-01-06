@@ -275,6 +275,13 @@ export function checkAchievements(playerData, runSummary) {
           playerData.unlocks.cosmetics.push(achievement.reward.cosmetic);
         }
       }
+
+      // Log achievement unlock
+      telemetry.log('achievement_unlock', {
+        achievement_id: achievement.id,
+        achievement_name: achievement.name,
+        xp_reward: achievement.reward.xp || 0
+      });
     }
   }
 
@@ -311,15 +318,32 @@ export async function processRunCompletion(playerData, runSummary) {
     maxChain: runSummary.max_chain
   });
 
-  // 5. Save player data
+  // 5. Award achievement XP (if any achievements were unlocked)
+  let achievementXp = 0;
+  if (newAchievements.length > 0) {
+    achievementXp = newAchievements.reduce((sum, ach) => sum + (ach.reward.xp || 0), 0);
+
+    // Add achievement XP and check for additional level-ups
+    if (achievementXp > 0) {
+      const achievementLevelResult = addXP(playerData, achievementXp);
+
+      // Merge level-up results
+      levelResult.levelsGained.push(...achievementLevelResult.levelsGained);
+      levelResult.newLevel = achievementLevelResult.newLevel;
+      levelResult.unlocks.push(...achievementLevelResult.unlocks);
+    }
+  }
+
+  // 6. Save player data
   savePlayerData(playerData);
 
   return {
     xp: {
-      earned: totalXp,
+      earned: totalXp + achievementXp,
       breakdown: {
         ...xpResult.breakdown,
-        missions: missionXp
+        missions: missionXp,
+        achievements: achievementXp
       }
     },
     level: levelResult,

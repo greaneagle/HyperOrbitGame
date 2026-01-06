@@ -178,11 +178,31 @@ canvas {
   background: var(--fg);
 }
 
-.hint {
-  opacity: 0.8;
-  font-size: 12px;
+/* Achievement hint at bottom right */
+.achievementHint {
+  opacity: 0.85;
+  font-size: 11px;
   text-align: right;
   line-height: 1.3;
+  max-width: min(220px, 30vw);
+}
+
+.achievementHintName {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 2px;
+  color: var(--good);
+}
+
+.achievementHintDesc {
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+
+.achievementHintProgress {
+  font-weight: 600;
+  font-size: 10px;
+  opacity: 0.65;
 }
 
 .goodFlash {
@@ -294,21 +314,9 @@ canvas {
   transform: scale(0.96);
 }
 
-/* Mission display */
+/* Mission display - HIDDEN (obstructs mobile view) */
 .missionPanel {
-  position: fixed;
-  top: 50%;
-  left: 14px;
-  transform: translateY(-50%);
-  width: min(240px, 28vw);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-  z-index: 5;
-}
-
-.missionPanel.show {
-  opacity: 1;
+  display: none;
 }
 
 .missionItem {

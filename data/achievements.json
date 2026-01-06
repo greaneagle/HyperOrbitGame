@@ -7,7 +7,8 @@
     "threshold": 1,
     "reward": {
       "badge": true,
-      "cosmetic": null
+      "cosmetic": null,
+      "xp": 50
     }
   },
   {
@@ -18,7 +19,8 @@
     "threshold": 10,
     "reward": {
       "badge": true,
-      "cosmetic": null
+      "cosmetic": null,
+      "xp": 100
     }
   },
   {
@@ -29,7 +31,8 @@
     "threshold": 25,
     "reward": {
       "badge": true,
-      "cosmetic": "trail_sparkle"
+      "cosmetic": "trail_sparkle",
+      "xp": 200
     }
   },
   {
@@ -40,7 +43,8 @@
     "threshold": 50,
     "reward": {
       "badge": true,
-      "cosmetic": "theme_neon"
+      "cosmetic": "theme_neon",
+      "xp": 300
     }
   },
   {
@@ -51,7 +55,8 @@
     "threshold": 3,
     "reward": {
       "badge": true,
-      "cosmetic": null
+      "cosmetic": null,
+      "xp": 80
     }
   },
   {
@@ -62,7 +67,8 @@
     "threshold": 5,
     "reward": {
       "badge": true,
-      "cosmetic": "trail_rainbow"
+      "cosmetic": "trail_rainbow",
+      "xp": 150
     }
   },
   {
@@ -73,7 +79,8 @@
     "threshold": 3,
     "reward": {
       "badge": true,
-      "cosmetic": "trail_inferno"
+      "cosmetic": "trail_inferno",
+      "xp": 180
     }
   },
   {
@@ -84,7 +91,8 @@
     "threshold": 1,
     "reward": {
       "badge": true,
-      "cosmetic": null
+      "cosmetic": null,
+      "xp": 250
     }
   },
   {
@@ -95,7 +103,8 @@
     "threshold": 90000,
     "reward": {
       "badge": true,
-      "cosmetic": "trail_lightning"
+      "cosmetic": "trail_lightning",
+      "xp": 400
     }
   },
   {
@@ -106,7 +115,8 @@
     "threshold": 7,
     "reward": {
       "badge": true,
-      "cosmetic": "theme_sunset"
+      "cosmetic": "theme_sunset",
+      "xp": 350
     }
   },
   {
@@ -117,7 +127,8 @@
     "threshold": 10,
     "reward": {
       "badge": true,
-      "cosmetic": null
+      "cosmetic": null,
+      "xp": 200
     }
   },
   {
@@ -128,7 +139,8 @@
     "threshold": 100,
     "reward": {
       "badge": true,
-      "cosmetic": "theme_midnight"
+      "cosmetic": "theme_midnight",
+      "xp": 500
     }
   }
 ]
