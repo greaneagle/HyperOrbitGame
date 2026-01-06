@@ -1,0 +1,213 @@
+{
+  "easy": [
+    {
+      "id": "easy_runs_3",
+      "name": "Warm Up",
+      "desc": "Complete 3 runs",
+      "type": "runs",
+      "target": 3,
+      "xp": 50
+    },
+    {
+      "id": "easy_rings_20",
+      "name": "Ring Runner",
+      "desc": "Escape 20 rings total",
+      "type": "rings_total",
+      "target": 20,
+      "xp": 60
+    },
+    {
+      "id": "easy_chain_2",
+      "name": "Double Trouble",
+      "desc": "Reach a chain of x2",
+      "type": "chain_at_least",
+      "target": 2,
+      "xp": 50
+    },
+    {
+      "id": "easy_survive_30s",
+      "name": "Half Minute",
+      "desc": "Survive for 30 seconds in a single run",
+      "type": "survive_seconds",
+      "target": 30,
+      "xp": 60
+    },
+    {
+      "id": "easy_runs_5",
+      "name": "Persistent",
+      "desc": "Complete 5 runs",
+      "type": "runs",
+      "target": 5,
+      "xp": 70
+    },
+    {
+      "id": "easy_rings_50",
+      "name": "Half Century",
+      "desc": "Escape 50 rings total",
+      "type": "rings_total",
+      "target": 50,
+      "xp": 80
+    },
+    {
+      "id": "easy_best_10",
+      "name": "Double Digits",
+      "desc": "Reach a best score of 10",
+      "type": "best_score",
+      "target": 10,
+      "xp": 70
+    },
+    {
+      "id": "easy_best_15",
+      "name": "Getting Good",
+      "desc": "Reach a best score of 15",
+      "type": "best_score",
+      "target": 15,
+      "xp": 80
+    }
+  ],
+
+  "skill": [
+    {
+      "id": "skill_chain_3",
+      "name": "Triple Threat",
+      "desc": "Reach a chain of x3",
+      "type": "chain_at_least",
+      "target": 3,
+      "xp": 100
+    },
+    {
+      "id": "skill_chain_4",
+      "name": "Quad Master",
+      "desc": "Reach a chain of x4",
+      "type": "chain_at_least",
+      "target": 4,
+      "xp": 120
+    },
+    {
+      "id": "skill_best_20",
+      "name": "Score Hunter",
+      "desc": "Reach a best score of 20",
+      "type": "best_score",
+      "target": 20,
+      "xp": 100
+    },
+    {
+      "id": "skill_best_30",
+      "name": "Elite Player",
+      "desc": "Reach a best score of 30",
+      "type": "best_score",
+      "target": 30,
+      "xp": 150
+    },
+    {
+      "id": "skill_survive_60s",
+      "name": "One Minute",
+      "desc": "Survive for 60 seconds in a single run",
+      "type": "survive_seconds",
+      "target": 60,
+      "xp": 120
+    },
+    {
+      "id": "skill_critical_escape_3",
+      "name": "Critical Pro",
+      "desc": "Escape during Critical Orbit 3 times in one run",
+      "type": "critical_escapes_single_run",
+      "target": 3,
+      "xp": 150
+    },
+    {
+      "id": "skill_no_death_pressure",
+      "name": "Pressure Master",
+      "desc": "Complete a run without dying to pressure",
+      "type": "avoid_death_cause",
+      "deathCause": "pressure_fail",
+      "xp": 100
+    },
+    {
+      "id": "skill_rings_100",
+      "name": "Century Club",
+      "desc": "Escape 100 rings total",
+      "type": "rings_total",
+      "target": 100,
+      "xp": 120
+    },
+    {
+      "id": "skill_chain_5",
+      "name": "Pentacle",
+      "desc": "Reach a chain of x5",
+      "type": "chain_at_least",
+      "target": 5,
+      "xp": 150
+    },
+    {
+      "id": "skill_survive_90s",
+      "name": "Marathon Runner",
+      "desc": "Survive for 90 seconds in a single run",
+      "type": "survive_seconds",
+      "target": 90,
+      "xp": 150
+    }
+  ],
+
+  "mode": [
+    {
+      "id": "mode_daily_participate",
+      "name": "Daily Dose",
+      "desc": "Play today's Daily Orbit",
+      "type": "daily_participate",
+      "xp": 80
+    },
+    {
+      "id": "mode_daily_complete",
+      "name": "Daily Champion",
+      "desc": "Complete today's Daily Orbit",
+      "type": "daily_complete",
+      "xp": 120
+    },
+    {
+      "id": "mode_sprint_participate",
+      "name": "Sprint Starter",
+      "desc": "Try Sprint 30 mode",
+      "type": "sprint_participate",
+      "xp": 80
+    },
+    {
+      "id": "mode_sprint_complete",
+      "name": "Sprint Master",
+      "desc": "Complete Sprint 30",
+      "type": "sprint_complete",
+      "xp": 150
+    },
+    {
+      "id": "mode_daily_streak_3",
+      "name": "Three Day Streak",
+      "desc": "Play Daily Orbit 3 days in a row",
+      "type": "daily_streak",
+      "target": 3,
+      "xp": 150
+    },
+    {
+      "id": "mode_endless_25",
+      "name": "Endless Warrior",
+      "desc": "Reach 25 rings in Endless mode",
+      "type": "endless_score",
+      "target": 25,
+      "xp": 100
+    },
+    {
+      "id": "mode_all_modes",
+      "name": "Mode Master",
+      "desc": "Play all three modes at least once",
+      "type": "play_all_modes",
+      "xp": 120
+    },
+    {
+      "id": "mode_sprint_fast",
+      "name": "Speed Demon",
+      "desc": "Complete Sprint 30 in under 2 minutes",
+      "type": "sprint_time_under",
+      "target": 120000,
+      "xp": 200
+    }
+  ]
+}

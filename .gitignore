@@ -5,18 +5,15 @@ server.py
 firebase-config.js
 
 # Debug/Dev Tools
-debug.js
-ab.js
-env.js
-telemetry.js
-version.js  # If not customizing per-deploy
+#debug.js
+#ab.js
+#env.js
+#telemetry.js
+#version.js   If not customizing per-deploy
 
 # Cleanup Utilities
 unregister-sw.html
 force-cleanup.html
-
-# Data (if regenerating or sensitive)
-data/*.json
 
 # Subfolders (exclude entire if not serving icons/docs)
 docs/

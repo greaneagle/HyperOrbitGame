@@ -1,0 +1,134 @@
+[
+  {
+    "id": "ach_first_escape",
+    "name": "First Flight",
+    "desc": "Escape your first ring",
+    "type": "rings",
+    "threshold": 1,
+    "reward": {
+      "badge": true,
+      "cosmetic": null
+    }
+  },
+  {
+    "id": "ach_best_10",
+    "name": "Ten and Counting",
+    "desc": "Reach a best score of 10",
+    "type": "bestScore",
+    "threshold": 10,
+    "reward": {
+      "badge": true,
+      "cosmetic": null
+    }
+  },
+  {
+    "id": "ach_best_25",
+    "name": "Quarter Century",
+    "desc": "Reach a best score of 25",
+    "type": "bestScore",
+    "threshold": 25,
+    "reward": {
+      "badge": true,
+      "cosmetic": "trail_sparkle"
+    }
+  },
+  {
+    "id": "ach_best_50",
+    "name": "Half Century Hero",
+    "desc": "Reach a best score of 50",
+    "type": "bestScore",
+    "threshold": 50,
+    "reward": {
+      "badge": true,
+      "cosmetic": "theme_neon"
+    }
+  },
+  {
+    "id": "ach_chain_3",
+    "name": "Chain Reaction",
+    "desc": "Reach a chain of x3",
+    "type": "maxChain",
+    "threshold": 3,
+    "reward": {
+      "badge": true,
+      "cosmetic": null
+    }
+  },
+  {
+    "id": "ach_chain_5",
+    "name": "Chain Master",
+    "desc": "Reach a chain of x5",
+    "type": "maxChain",
+    "threshold": 5,
+    "reward": {
+      "badge": true,
+      "cosmetic": "trail_rainbow"
+    }
+  },
+  {
+    "id": "ach_critical_pro",
+    "name": "Critical Pro",
+    "desc": "Escape during Critical Orbit 3 times in one run",
+    "type": "criticalEscapes",
+    "threshold": 3,
+    "reward": {
+      "badge": true,
+      "cosmetic": "trail_inferno"
+    }
+  },
+  {
+    "id": "ach_sprint_complete",
+    "name": "Sprint Champion",
+    "desc": "Complete Sprint 30",
+    "type": "sprintComplete",
+    "threshold": 1,
+    "reward": {
+      "badge": true,
+      "cosmetic": null
+    }
+  },
+  {
+    "id": "ach_sprint_fast",
+    "name": "Speed Demon",
+    "desc": "Complete Sprint 30 in under 90 seconds",
+    "type": "sprintTime",
+    "threshold": 90000,
+    "reward": {
+      "badge": true,
+      "cosmetic": "trail_lightning"
+    }
+  },
+  {
+    "id": "ach_daily_streak_7",
+    "name": "Week Warrior",
+    "desc": "Play Daily Orbit 7 days in a row",
+    "type": "dailyStreak",
+    "threshold": 7,
+    "reward": {
+      "badge": true,
+      "cosmetic": "theme_sunset"
+    }
+  },
+  {
+    "id": "ach_level_10",
+    "name": "Rising Star",
+    "desc": "Reach level 10",
+    "type": "level",
+    "threshold": 10,
+    "reward": {
+      "badge": true,
+      "cosmetic": null
+    }
+  },
+  {
+    "id": "ach_total_runs_100",
+    "name": "Centurion",
+    "desc": "Complete 100 total runs",
+    "type": "totalRuns",
+    "threshold": 100,
+    "reward": {
+      "badge": true,
+      "cosmetic": "theme_midnight"
+    }
+  }
+]
