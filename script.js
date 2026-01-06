@@ -1,3 +1,111 @@
+// ======= PERFECT ORBIT V2 (Pv02.2) =======
+// Step 1: Rock-Solid Architecture with modular structure
+
+import { initPlayerData, savePlayerData, getVersion } from './js/storage.js';
+import { getEnvInfo, logEnvInfo } from './js/env.js';
+import { ensureABGroup, getABParams, getExperimentInfo } from './js/ab.js';
+import * as telemetry from './js/telemetry.js';
+import { MODES, getModeConfig, getTodayId, getDailyPattern, getDailyGapCenter, isNewDay } from './js/modes.js';
+import { loadMissions, rollMissions, updateMissionProgress, formatMissionProgress } from './js/missions.js';
+import { loadAchievements, processRunCompletion, getAllCosmetics, isCosmeticUnlocked, selectCosmetic, getProgressionStatus } from './js/progression.js';
+// PWA imports disabled for now
+// import { registerServiceWorker, initInstallPrompt, checkPostRunInstallTriggers, showInstallPrompt } from './js/pwa.js';
+import { initDebugPanel } from './js/debug.js';
+
+// ======= INITIALIZATION =======
+// This runs BEFORE the game loop starts
+let playerData = null;
+let abParams = null;
+let envInfo = null;
+let missionTemplates = null;
+let currentMode = 'endless'; // Current mode: 'endless', 'daily', 'sprint'
+let dailyPattern = null; // Daily orbit pattern
+let modesPlayedThisSession = new Set(); // Track modes played for "play_all_modes" mission
+
+async function initApp() {
+  console.log(`[App] Perfect Orbit ${getVersion()} - Initializing...`);
+
+  // Step 1: Load/migrate playerData
+  playerData = initPlayerData();
+
+  // Step 2: Detect environment
+  envInfo = logEnvInfo();
+
+  // Step 3: Update player environment data
+  playerData.env.platform = envInfo.platform;
+  playerData.env.isStandalone = envInfo.isStandalone;
+  savePlayerData(playerData);
+
+  // Step 4: Ensure A/B cohort is assigned
+  ensureABGroup(playerData);
+  abParams = getABParams(playerData.abGroup);
+  savePlayerData(playerData);
+
+  // Step 5: Initialize telemetry (stub for now)
+  telemetry.init({ debug: true });
+
+  // Step 6: Set user properties (will be used in Phase 5)
+  telemetry.setUserProps({
+    ab_group: playerData.abGroup,
+    platform: envInfo.platform,
+    is_standalone: envInfo.isStandalone,
+    pwa_installed: envInfo.isStandalone,
+    player_level: playerData.level
+  });
+
+  // Step 7: Log experiment info
+  const expInfo = getExperimentInfo(playerData.abGroup);
+  console.log('[A/B Experiment]', expInfo);
+
+  // Step 8: Load mission templates
+  missionTemplates = await loadMissions();
+
+  // Step 8b: Load achievements (Step 4)
+  await loadAchievements();
+
+  // Step 9: Check if new day for daily missions
+  const todayId = getTodayId();
+  if (isNewDay(playerData, todayId)) {
+    console.log('[Missions] New day detected, rolling new missions');
+    const rolled = rollMissions(missionTemplates, playerData.missions.cooldown);
+    playerData.missions.active = rolled;
+    playerData.missions.dateRolled = todayId;
+    playerData.stats.lastDailyDate = todayId;
+    savePlayerData(playerData);
+  } else if (!playerData.missions.active || playerData.missions.active.length === 0) {
+    // No missions yet, roll initial set
+    console.log('[Missions] Rolling initial missions');
+    const rolled = rollMissions(missionTemplates, playerData.missions.cooldown);
+    playerData.missions.active = rolled;
+    playerData.missions.dateRolled = todayId;
+    savePlayerData(playerData);
+  }
+
+  // Step 10: Load daily pattern if needed
+  dailyPattern = getDailyPattern(getVersion(), todayId);
+
+  // Step 11: Register service worker (Step 5) - DISABLED FOR NOW
+  // await registerServiceWorker();
+
+  // Step 12: Initialize install prompt listeners (Step 5) - DISABLED FOR NOW
+  // initInstallPrompt(playerData);
+
+  // Step 13: Initialize debug panel (Step 7)
+  initDebugPanel(playerData, envInfo);
+
+  // Step 14: Log session start
+  telemetry.logSessionStart(currentMode);
+
+  console.log('[App] Initialization complete');
+  console.log('[App] Current mode:', currentMode);
+  console.log('[App] Active missions:', playerData.missions.active);
+}
+
+// Initialize immediately (await at top level)
+await initApp();
+
+// ======= GAME CODE (from original script.js) =======
+// Wrapped in an IIFE to avoid polluting global scope
 (() => {
   // ======= PALETTE =======
   const COL_BG   = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
@@ -6,6 +114,70 @@
 
   // "Heat" hot color (used for UI + ball tint). This is an extra tint on purpose.
   const COL_HOT  = '#FF3B30';
+
+  // ======= STEP 4: COSMETIC RENDERING =======
+
+  /**
+   * Get trail color based on selected cosmetic
+   */
+  function getTrailColor(trailId) {
+    switch(trailId) {
+      case 'sparkle': return '#FFD700'; // Gold
+      case 'rainbow': return `hsl(${(Date.now() / 10) % 360}, 70%, 60%)`; // Animated rainbow
+      case 'inferno': return '#FF4500'; // Red-orange
+      case 'lightning': return '#00BFFF'; // Electric blue
+      case 'neon': return '#00FF88'; // Neon green
+      case 'cosmic': return '#9400D3'; // Purple
+      default: return COL_GOOD; // Default green
+    }
+  }
+
+  /**
+   * Get theme colors based on selected cosmetic
+   */
+  function getThemeColors(themeId) {
+    switch(themeId) {
+      case 'neon':
+        return {
+          bg: '#0A0A15',
+          fg: '#00FFFF',
+          good: '#FF00FF'
+        };
+      case 'sunset':
+        return {
+          bg: '#1A0F1F',
+          fg: '#FFB74D',
+          good: '#FF6B9D'
+        };
+      case 'midnight':
+        return {
+          bg: '#000814',
+          fg: '#B8C5D6',
+          good: '#4CC9F0'
+        };
+      case 'ocean':
+        return {
+          bg: '#001F3F',
+          fg: '#7FDBFF',
+          good: '#39CCCC'
+        };
+      default:
+        return {
+          bg: COL_BG,
+          fg: COL_FG,
+          good: COL_GOOD
+        };
+    }
+  }
+
+  /**
+   * Apply theme colors to canvas (called once per frame)
+   */
+  function applyTheme() {
+    const theme = getThemeColors(playerData.cosmetics.themeId);
+    // We'll use these in the draw function
+    return theme;
+  }
 
   // ======= SPEED CONFIGURATION =======
   // Ball orbit speed
@@ -38,7 +210,12 @@
     chainTimer: 0,
     timeSinceLastEscape: 999,  // Track time since last escape for chaining
 
-    heat: 0, // 0..1
+    // PHASE 1: Pressure system (replaces heat)
+    pressure: 0, // 0..1
+    criticalActive: false,
+    criticalStartTime: 0,
+    criticalElapsed: 0,
+    criticalWindow: 0, // Set from A/B params
 
     // Perfect streak (kept from your working build)
     perfectStreak: 0,
@@ -64,6 +241,23 @@
     gapPx: 0,
     baseThickness: 0,
     ballRadius: 0,
+
+    // Run tracking (for telemetry)
+    runStartTime: 0,
+    runStats: {
+      maxChain: 1,
+      criticalEntries: 0,
+      criticalEscapes: 0
+    },
+
+    // Tap tracking (for pressure spam detection)
+    lastTapTime: 0,
+    tapsInWindow: [],
+
+    // PHASE 2: Mode-specific state
+    mode: 'endless', // Current run mode
+    sprintCompleted: false, // Sprint completion flag
+    dailyCompleted: false // Daily completion flag
   };
 
   const WINDOW = {
@@ -99,28 +293,407 @@
   const centerMsg = document.getElementById('centerMsg');
   const btnStart = document.getElementById('btnStart');
   const btnExpert = document.getElementById('btnExpert');
-  const btnReset = document.getElementById('btnReset');
+  // const btnReset = document.getElementById('btnReset'); // Removed - button doesn't exist
   const goodFlash = document.getElementById('goodFlash');
   const darkOverlay = document.getElementById('darkOverlay');
+  const criticalMsg = document.getElementById('criticalMsg');
+  const onboardingHint = document.getElementById('onboardingHint');
+  const hintTitle = document.getElementById('hintTitle');
+  const hintText = document.getElementById('hintText');
+  const hintDismiss = document.getElementById('hintDismiss');
 
-  const LS_BEST = 'perfect_orbit_best_v1';
-  const LS_EXPERT = 'perfect_orbit_expert_v1';
-  let best = +(localStorage.getItem(LS_BEST) || 0);
-  let expert = (localStorage.getItem(LS_EXPERT) === '1');
+  // Use playerData instead of localStorage directly
+  let best = playerData.bestScore.endless;
+  let expert = playerData.settings.expert;
   elBest.textContent = best;
   btnExpert.textContent = `Expert: ${expert ? 'On' : 'Off'}`;
 
   btnExpert.addEventListener('click', () => {
     expert = !expert;
-    localStorage.setItem(LS_EXPERT, expert ? '1' : '0');
+    playerData.settings.expert = expert;
+    savePlayerData(playerData);
     btnExpert.textContent = `Expert: ${expert ? 'On' : 'Off'}`;
   });
 
-  btnReset.addEventListener('click', () => {
-    best = 0;
-    localStorage.setItem(LS_BEST, '0');
-    elBest.textContent = '0';
+  // Reset button removed - not needed in UI
+  // btnReset.addEventListener('click', () => {
+  //   best = 0;
+  //   playerData.bestScore.endless = 0;
+  //   savePlayerData(playerData);
+  //   elBest.textContent = '0';
+  // });
+
+  // ======= MODE SELECTOR UI =======
+  const modeButtons = {
+    endless: document.getElementById('modeEndless'),
+    daily: document.getElementById('modeDaily'),
+    sprint: document.getElementById('modeSprint')
+  };
+  const modeBestLabels = {
+    endless: document.getElementById('bestEndless'),
+    daily: document.getElementById('bestDaily'),
+    sprint: document.getElementById('bestSprint')
+  };
+
+  // Initialize mode best scores display
+  function updateModeBestScores() {
+    modeBestLabels.endless.textContent = `Best: ${playerData.bestScore.endless}`;
+    modeBestLabels.daily.textContent = `Best: ${playerData.bestScore.daily}`;
+    if (playerData.bestScore.sprint > 0) {
+      const seconds = (playerData.bestScore.sprint / 1000).toFixed(1);
+      modeBestLabels.sprint.textContent = `Best: ${seconds}s`;
+    } else {
+      modeBestLabels.sprint.textContent = 'Best: --';
+    }
+  }
+  updateModeBestScores();
+
+  // Mode selection handler
+  function selectMode(mode) {
+    if (running) {
+      // If mid-run, ask for confirmation
+      if (!confirm('End current run and switch mode?')) {
+        return;
+      }
+      endGame('mode_switch');
+    }
+
+    currentMode = mode;
+
+    // Update active button
+    Object.keys(modeButtons).forEach(m => {
+      modeButtons[m].classList.toggle('active', m === mode);
+    });
+
+    // Update best score display
+    const modeConfig = getModeConfig(mode);
+    if (modeConfig.scoreType === 'rings') {
+      best = playerData.bestScore[mode];
+      elBest.textContent = best;
+    } else if (modeConfig.scoreType === 'time') {
+      if (playerData.bestScore[mode] > 0) {
+        const seconds = (playerData.bestScore[mode] / 1000).toFixed(1);
+        elBest.textContent = `${seconds}s`;
+      } else {
+        elBest.textContent = '--';
+      }
+    }
+
+    // Step 6: Log mode selected event
+    telemetry.logModeSelected(mode);
+
+    console.log(`[Mode] Selected: ${mode}`);
+  }
+
+  // Attach mode button listeners
+  Object.keys(modeButtons).forEach(mode => {
+    modeButtons[mode].addEventListener('click', () => selectMode(mode));
   });
+
+  // ======= MISSION UI =======
+  const missionPanel = document.getElementById('missionPanel');
+  const missionList = document.getElementById('missionList');
+  const missionToast = document.getElementById('missionToast');
+
+  function updateMissionDisplay() {
+    if (!playerData.missions.active || playerData.missions.active.length === 0) {
+      missionPanel.classList.remove('show');
+      return;
+    }
+
+    missionList.innerHTML = '';
+    playerData.missions.active.forEach(mission => {
+      const item = document.createElement('div');
+      item.className = `missionItem ${mission.completed ? 'completed' : ''}`;
+
+      const progress = Math.min(100, Math.round((mission.progress / mission.target) * 100));
+
+      item.innerHTML = `
+        <div class="missionName">${mission.name}</div>
+        <div class="missionDesc">${mission.desc}</div>
+        <div class="missionProgressBar">
+          <div class="missionProgressFill" style="width: ${progress}%"></div>
+        </div>
+        <div class="missionReward">+${mission.reward} XP</div>
+      `;
+
+      missionList.appendChild(item);
+    });
+  }
+
+  function showMissionToast(mission) {
+    missionToast.textContent = `✓ ${mission.name} (+${mission.reward} XP)`;
+    missionToast.classList.add('show');
+
+    setTimeout(() => {
+      missionToast.classList.remove('show');
+    }, 3000);
+  }
+
+  // Show mission panel during gameplay
+  function showMissionPanel() {
+    updateMissionDisplay();
+    missionPanel.classList.add('show');
+  }
+
+  function hideMissionPanel() {
+    missionPanel.classList.remove('show');
+  }
+
+  // ======= ONBOARDING HINTS =======
+  // Phase 1: Agency-first, milestone-triggered, non-blocking hints
+  const HINTS = {
+    first_escape: {
+      title: "Nice Escape!",
+      text: "Tap to reverse direction and align with gaps. Perfect timing creates rhythm!",
+      shown: false
+    },
+    first_chain: {
+      title: "Chain Bonus!",
+      text: "Multiple aligned rings = instant chain escape. Look ahead to maximize combos!",
+      shown: false
+    },
+    first_critical: {
+      title: "Critical Orbit!",
+      text: "Pressure builds over time. When it hits Critical, escape quickly or you'll fail. Critical escapes reset all pressure!",
+      shown: false
+    }
+  };
+
+  let currentHintTimeout = null;
+
+  function showHint(hintKey) {
+    if (!HINTS[hintKey] || HINTS[hintKey].shown) return;
+    if (playerData.stats.totalRuns > 5) return; // Only show hints in first 5 runs
+
+    const hint = HINTS[hintKey];
+    hintTitle.textContent = hint.title;
+    hintText.textContent = hint.text;
+    onboardingHint.classList.add('show');
+    HINTS[hintKey].shown = true;
+
+    // Auto-hide after 5 seconds
+    if (currentHintTimeout) clearTimeout(currentHintTimeout);
+    currentHintTimeout = setTimeout(() => {
+      onboardingHint.classList.remove('show');
+    }, 5000);
+  }
+
+  function hideHint() {
+    onboardingHint.classList.remove('show');
+    if (currentHintTimeout) {
+      clearTimeout(currentHintTimeout);
+      currentHintTimeout = null;
+    }
+  }
+
+  hintDismiss.addEventListener('click', hideHint);
+
+  // ======= STEP 4: RUN SUMMARY & LOCKER UI =======
+
+  /**
+   * Display run summary with XP, level progress, and unlocks
+   */
+  function displayRunSummary(progressionResult) {
+    const runSummary = document.getElementById('runSummary');
+    const xpEarned = document.getElementById('xpEarned');
+    const xpBreakdown = document.getElementById('xpBreakdown');
+    const summaryProgressFill = document.getElementById('summaryProgressFill');
+    const summaryLevel = document.getElementById('summaryLevel');
+    const summaryXpPercent = document.getElementById('summaryXpPercent');
+    const unlockNotice = document.getElementById('unlockNotice');
+
+    // Show XP earned
+    xpEarned.textContent = progressionResult.xp.earned;
+
+    // Show XP breakdown
+    const breakdown = progressionResult.xp.breakdown;
+    let breakdownText = [];
+    if (breakdown.base > 0) breakdownText.push(`Rings: ${breakdown.base}`);
+    if (breakdown.chain > 0) breakdownText.push(`Chain: ${breakdown.chain}`);
+    if (breakdown.critical > 0) breakdownText.push(`Critical: ${breakdown.critical}`);
+    if (breakdown.modeBonus > 0) breakdownText.push(`Mode Bonus: ${breakdown.modeBonus}`);
+    if (breakdown.missions > 0) breakdownText.push(`Missions: ${breakdown.missions}`);
+    xpBreakdown.innerHTML = breakdownText.join(' • ');
+
+    // Show level progress
+    const status = getProgressionStatus(playerData);
+    summaryLevel.textContent = status.level;
+    summaryXpPercent.textContent = status.xpPercent;
+    summaryProgressFill.style.width = (status.xpProgress * 100) + '%';
+
+    // Show unlocks if any
+    const allUnlocks = [
+      ...progressionResult.level.unlocks,
+      ...progressionResult.achievements
+    ];
+
+    if (allUnlocks.length > 0) {
+      let unlockText = [];
+
+      // Level-ups
+      if (progressionResult.level.levelsGained.length > 0) {
+        unlockText.push(`🎉 Level ${progressionResult.level.newLevel}!`);
+      }
+
+      // New unlocks
+      for (const unlock of progressionResult.level.unlocks) {
+        unlockText.push(`Unlocked: ${unlock.name}`);
+      }
+
+      // Achievements
+      for (const achievement of progressionResult.achievements) {
+        unlockText.push(`🏆 ${achievement.name}`);
+      }
+
+      unlockNotice.innerHTML = unlockText.join('<br/>');
+      unlockNotice.style.display = 'block';
+    } else {
+      unlockNotice.style.display = 'none';
+    }
+
+    runSummary.style.display = 'block';
+  }
+
+  // ======= LOCKER UI =======
+  const lockerPanel = document.getElementById('lockerPanel');
+  const lockerClose = document.getElementById('lockerClose');
+  const btnLocker = document.getElementById('btnLocker');
+  const lockerTabContent = document.getElementById('lockerTabContent');
+
+  let currentLockerTab = 'trails';
+
+  function openLocker() {
+    lockerPanel.classList.add('show');
+    updateLockerProgress();
+    renderLockerTab(currentLockerTab);
+  }
+
+  function closeLocker() {
+    lockerPanel.classList.remove('show');
+  }
+
+  function updateLockerProgress() {
+    const status = getProgressionStatus(playerData);
+    document.getElementById('lockerLevel').textContent = status.level;
+    document.getElementById('lockerXp').textContent = playerData.xp;
+    document.getElementById('lockerXpNeeded').textContent = status.xpNeeded;
+    document.getElementById('lockerXpFill').style.width = (status.xpProgress * 100) + '%';
+  }
+
+  function renderLockerTab(tab) {
+    currentLockerTab = tab;
+
+    // Update active tab
+    document.querySelectorAll('.lockerTab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === tab);
+    });
+
+    if (tab === 'trails') {
+      renderCosmeticsTab('trails');
+    } else if (tab === 'themes') {
+      renderCosmeticsTab('themes');
+    } else if (tab === 'badges') {
+      renderBadgesTab();
+    }
+  }
+
+  function renderCosmeticsTab(type) {
+    const cosmetics = getAllCosmetics();
+    const items = cosmetics[type];
+    const selectedId = playerData.cosmetics[type === 'trails' ? 'trailId' : 'themeId'];
+
+    let html = '<div class="cosmeticGrid">';
+
+    for (const item of items) {
+      const unlocked = isCosmeticUnlocked(playerData, type, item.id);
+      const selected = item.id === selectedId;
+      const lockedClass = unlocked ? '' : 'locked';
+      const selectedClass = selected ? 'selected' : '';
+
+      let unlockText = '';
+      if (!unlocked) {
+        if (item.unlockType === 'level') {
+          unlockText = `Level ${item.unlockValue}`;
+        } else if (item.unlockType === 'achievement') {
+          unlockText = 'Achievement';
+        }
+      } else if (selected) {
+        unlockText = 'Equipped';
+      }
+
+      const emoji = type === 'trails' ? '✨' : '🎨';
+
+      html += `
+        <div class="cosmeticItem ${lockedClass} ${selectedClass}" data-type="${type}" data-id="${item.id}">
+          <div class="cosmeticPreview">${emoji}</div>
+          <div class="cosmeticName">${item.name}</div>
+          <div class="cosmeticUnlock">${unlockText}</div>
+        </div>
+      `;
+    }
+
+    html += '</div>';
+    lockerTabContent.innerHTML = html;
+
+    // Attach click handlers
+    lockerTabContent.querySelectorAll('.cosmeticItem').forEach(el => {
+      el.addEventListener('click', () => {
+        const itemType = el.dataset.type;
+        const itemId = el.dataset.id;
+        if (!el.classList.contains('locked')) {
+          selectCosmetic(playerData, itemType === 'trails' ? 'trail' : 'theme', itemId);
+          renderCosmeticsTab(type); // Re-render to update selection
+        }
+      });
+    });
+  }
+
+  async function renderBadgesTab() {
+    const achievements = await loadAchievements();
+
+    let html = '<div class="badgeGrid">';
+
+    for (const achievement of achievements) {
+      const unlocked = playerData.unlocks.achievements.includes(achievement.id);
+      const unlockedClass = unlocked ? 'unlocked' : 'locked';
+      const icon = unlocked ? '🏆' : '🔒';
+
+      html += `
+        <div class="badgeItem ${unlockedClass}">
+          <div class="badgeIcon">${icon}</div>
+          <div class="badgeName">${achievement.name}</div>
+          <div class="badgeDesc">${achievement.desc}</div>
+        </div>
+      `;
+    }
+
+    html += '</div>';
+    lockerTabContent.innerHTML = html;
+  }
+
+  // Locker event listeners
+  btnLocker.addEventListener('click', openLocker);
+  lockerClose.addEventListener('click', closeLocker);
+
+  document.querySelectorAll('.lockerTab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      renderLockerTab(tab.dataset.tab);
+    });
+  });
+
+  // Install button - DISABLED FOR NOW
+  // const btnInstall = document.getElementById('btnInstall');
+  // if (btnInstall) {
+  //   btnInstall.addEventListener('click', () => {
+  //     showInstallPrompt(playerData, playerData.env.platform);
+  //   });
+  //
+  //   // Show button if install is available and not already installed
+  //   if (playerData.env.installPromptAvailable && !playerData.env.pwaInstalled && !playerData.env.isStandalone) {
+  //     btnInstall.style.display = 'inline-block';
+  //   }
+  // }
 
   // ======= HELPERS =======
   function rand(a,b){ return a + Math.random()*(b-a); }
@@ -173,7 +746,7 @@
 
   function heatColor(t){
     // start close to FG, end at HOT
-    // (nonlinear makes it feel “calm” until mid heat, then ramps)
+    // (nonlinear makes it feel "calm" until mid heat, then ramps)
     const tt = t*t;
     return mixRGB(FG_RGB, HOT_RGB, tt);
   }
@@ -188,7 +761,7 @@
   let running = false;
   let lastT = performance.now();
 
-  // Don’t render gameplay behind the start UI
+  // Don't render gameplay behind the start UI
   let renderEnabled = false;
 
   function setLayoutConstants(){
@@ -201,7 +774,7 @@
 
     // Outer radius cap:
     // - Tall screens: let it grow but always fit (keep margins)
-    // - Wide screens: keep it small so it doesn’t dominate (roughly <= half-screen diameter)
+    // - Wide screens: keep it small so it doesn't dominate (roughly <= half-screen diameter)
     let outerCap;
     if(aspect >= 1.15){
       outerCap = minDim * 0.25; // wide: radius ~ 25% of minDim (diameter ~ 50%)
@@ -228,6 +801,16 @@
     // gap never shrinks (constant)
     const gapWidth = expert ? 0.42 : 0.56;
 
+    // PHASE 2: Determine gap center based on mode
+    let gapCenter;
+    if (state.mode === 'daily' && dailyPattern) {
+      // Daily mode: use deterministic pattern
+      gapCenter = getDailyGapCenter(dailyPattern, i);
+    } else {
+      // Endless/Sprint: random
+      gapCenter = rand(0, Math.PI * 2);
+    }
+
     // difficulty from speed only
     const maxSpeed = expert ? RING_SPEED_MAX_EXPERT : RING_SPEED_MAX_NORMAL;
     const baseRotSpeed =
@@ -241,9 +824,9 @@
     // Obstacle logic: after ring 50, chance increases from 10% to 20% over 200 rings
     let hasObstacle = false;
     let obstacleAngle = 0;
-    if(i >= 50){
+    if(i >= 5){
       const progress = Math.min(1, (i - 50) / 200); // 0 at ring 50, 1 at ring 250
-      const obstacleChance = 0.10 + progress * 0.10; // 10% to 20%
+      const obstacleChance = 0.30 + progress * 0.40; // 10% to 20%
       if(Math.random() < obstacleChance){
         hasObstacle = true;
         // Place obstacle away from gap (at least 90 degrees away)
@@ -256,15 +839,15 @@
     // Reduce ring speed by 50% if it has an obstacle
     const finalRotSpeed = hasObstacle ? rotSpeed * 0.5 : rotSpeed;
 
-    return { gapWidth, rotSpeed: finalRotSpeed, drift, hasObstacle, obstacleAngle };
+    return { gapCenter, gapWidth, rotSpeed: finalRotSpeed, drift, hasObstacle, obstacleAngle };
   }
 
   function ensureRing(i){
     if(state.rings.has(i)) return;
-    const { gapWidth, rotSpeed, drift, hasObstacle, obstacleAngle } = ringParamsForIndex(i);
+    const { gapCenter, gapWidth, rotSpeed, drift, hasObstacle, obstacleAngle } = ringParamsForIndex(i);
     state.rings.set(i, {
       i,
-      gapCenter: rand(0, Math.PI*2),
+      gapCenter,
       gapWidth,
       rotSpeed,
       drift,
@@ -312,13 +895,22 @@
   }
 
   // ======= UI / GAME FLOW =======
-  function setHeatUI(){
-    const pct = Math.round(state.heat*100);
+  function setPressureUI(){
+    const pct = Math.round(state.pressure*100);
     elHeatFill.style.width = pct + '%';
     elHeatText.textContent = pct + '%';
 
-    // Heat becomes fiery (bar color shifts with heat)
-    elHeatFill.style.background = heatColor(state.heat);
+    // Pressure becomes fiery as it approaches critical (bar color shifts with pressure)
+    // Critical zone (>= 0.9) shows intense red
+    const displayPressure = state.criticalActive ? 1.0 : state.pressure;
+    elHeatFill.style.background = heatColor(displayPressure);
+
+    // Critical state visual feedback
+    if(state.criticalActive){
+      elHeatFill.style.animation = 'pulse 0.5s ease-in-out infinite';
+    } else {
+      elHeatFill.style.animation = 'none';
+    }
   }
 
   function resetGame(){
@@ -336,7 +928,12 @@
     state.chainTimer = 0;
     state.timeSinceLastEscape = 999;
 
-    state.heat = 0;
+    // PHASE 1: Reset pressure system
+    state.pressure = 0;
+    state.criticalActive = false;
+    state.criticalStartTime = 0;
+    state.criticalElapsed = 0;
+    state.criticalWindow = abParams.criticalWindow; // From A/B params
 
     state.perfectStreak = 0;
     state.bestPerfectStreak = 0;
@@ -355,22 +952,47 @@
     state.ballTweenRadius = 0;
     state.ringGlows.clear();
 
+    // PHASE 2: Set mode from global currentMode
+    state.mode = currentMode;
+    state.sprintCompleted = false;
+    state.dailyCompleted = false;
+
     WINDOW.focus = 0;
     ensureWindow();
 
     elScore.textContent = '0';
     elChain.textContent = 'x1';
-    setHeatUI();
+    setPressureUI();
+
+    // Reset run tracking
+    state.runStartTime = performance.now();
+    state.runStats = {
+      maxChain: 1,
+      criticalEntries: 0,
+      criticalEscapes: 0
+    };
+
+    // Reset tap tracking
+    state.lastTapTime = 0;
+    state.tapsInWindow = [];
   }
 
-  function endGame(reason){
+  async function endGame(reason){
     running = false;
     darkOverlay.style.opacity = '0.7';
     centerMsg.style.display = 'block';
+    criticalMsg.style.opacity = '0'; // Hide critical message
+    hideMissionPanel(); // PHASE 2: Hide mission panel on game end
 
     let headline = 'Run Over';
     let line1 = `You escaped <b>${state.score}</b> rings.`;
-    if(reason === 'burn'){
+    let tip = `Tap <b>Start</b> to try again — you can always do better.`;
+
+    if(reason === 'pressure_fail'){
+      headline = 'Critical Orbit Failed';
+      line1 = `Pressure overwhelmed you after escaping <b>${state.score}</b> rings.`;
+      tip = `<b>Tip:</b> Escape during Critical Orbit to reset pressure. Watch your timing!`;
+    } else if(reason === 'burn'){
       headline = 'You Burned Up';
       line1 = `You <b>burned up</b> after escaping <b>${state.score}</b> rings.`;
     } else if(reason === 'time'){
@@ -387,14 +1009,84 @@
 
     document.querySelector('.title').textContent = headline;
     document.querySelector('.subtitle').innerHTML =
-      `${line1}${perfectLine}<br/>Tap <b>Start</b> to try again — you can always do better.`;
+      `${line1}${perfectLine}<br/>${tip}`;
 
-    if(state.score > best){
-      best = state.score;
-      localStorage.setItem(LS_BEST, String(best));
-      elBest.textContent = String(best);
+    // PHASE 2: Update best score per mode
+    const modeConfig = getModeConfig(state.mode);
+    if (modeConfig.scoreType === 'rings' && state.score > playerData.bestScore[state.mode]) {
+      playerData.bestScore[state.mode] = state.score;
+      // Update UI if we're in endless mode
+      if (state.mode === 'endless') {
+        best = state.score;
+        elBest.textContent = String(best);
+      }
     }
+
+    // Update stats
+    playerData.stats.totalRuns++;
+    playerData.stats.totalRings += state.score;
+    playerData.stats.deaths[reason] = (playerData.stats.deaths[reason] || 0) + 1;
+
+    // PHASE 2: Update mission progress
+    const runDuration = performance.now() - state.runStartTime;
+    const completedMissions = updateMissionProgress(
+      playerData.missions.active,
+      'run_end',
+      {
+        mode: state.mode,
+        rings: state.score,
+        cause: reason,
+        time_ms: Math.round(runDuration),
+        critical_escapes: state.runStats.criticalEscapes
+      }
+    );
+
+    // Show mission completion toast if any completed
+    if (completedMissions.length > 0) {
+      for (const mission of completedMissions) {
+        showMissionToast(mission);
+      }
+      updateMissionDisplay();
+    }
+
+    // STEP 4: Process XP, level-ups, and achievements
+    const progressionResult = await processRunCompletion(playerData, {
+      rings: state.score,
+      max_chain: state.runStats.maxChain,
+      critical_escapes: state.runStats.criticalEscapes,
+      time_ms: Math.round(runDuration),
+      sprintWin: false,
+      completedMissions
+    });
+
+    // Display run summary with XP
+    displayRunSummary(progressionResult);
+
+    // Update mode best scores display
+    updateModeBestScores();
+
+    // Save player data
+    savePlayerData(playerData);
+
+    // STEP 5: Check install triggers - DISABLED FOR NOW
+    // const isNewBest = state.score > best && state.mode === 'endless';
+    // checkPostRunInstallTriggers(playerData, {
+    //   isNewBest,
+    //   sprintComplete: false
+    // });
+
+    // Log run end
+    telemetry.logRunEnd({
+      mode: state.mode,
+      rings: state.score,
+      cause: reason,
+      time_ms: Math.round(runDuration),
+      max_chain: state.runStats.maxChain,
+      critical_entries: state.runStats.criticalEntries,
+      critical_escapes: state.runStats.criticalEscapes
+    });
   }
+
 
   function start(){
     setLayoutConstants();
@@ -404,6 +1096,30 @@
     darkOverlay.style.opacity = '0';
     centerMsg.style.display = 'none';
     lastT = performance.now();
+
+    // PHASE 2: Show mission panel during gameplay
+    showMissionPanel();
+
+    // PHASE 2: Log run start with current mode
+    telemetry.logRunStart(state.mode);
+
+    // PHASE 2: Update mission progress for mode participation
+    modesPlayedThisSession.add(state.mode);
+    const startMissions = updateMissionProgress(playerData.missions.active, 'run_start', { mode: state.mode });
+
+    // Track modes played
+    if (modesPlayedThisSession.size >= 3) {
+      const modeMissions = updateMissionProgress(playerData.missions.active, 'modes_played_updated', { modesPlayed: 3 });
+      if (modeMissions.length > 0) startMissions.push(...modeMissions);
+    }
+
+    // Show toasts for any missions completed on run start
+    if (startMissions.length > 0) {
+      for (const mission of startMissions) {
+        showMissionToast(mission);
+      }
+      updateMissionDisplay();
+    }
   }
 
   btnStart.addEventListener('click', () => {
@@ -411,7 +1127,7 @@
     document.querySelector('.subtitle').innerHTML =
       `Watch the gaps align. <b>Tap</b> to reverse orbit direction.<br/>
        If your angle matches the gap, the ball slips outward — sometimes through <b>multiple rings at once</b>.
-       <br/><span style="opacity:.85">(Spamming taps builds “heat” and makes timing harder.)</span>`;
+       <br/><span style="opacity:.85">(Pressure builds over time. Escape during <b>Critical Orbit</b> to reset it!)</span>`;
     start();
   });
 
@@ -421,17 +1137,28 @@
 
     state.ballDir *= -1;
 
-    // More impactful heat
-    const add = expert ? 0.18 : 0.15;
-    state.heat = clamp(state.heat + add, 0, 1);
-    setHeatUI();
+    // PHASE 1: Pressure system with spam detection
+    const now = performance.now();
+    const TAP_WINDOW = 1000; // 1 second window for spam detection
+
+    // Clean old taps outside window
+    state.tapsInWindow = state.tapsInWindow.filter(t => now - t < TAP_WINDOW);
+    state.tapsInWindow.push(now);
+
+    // Calculate spam multiplier (more taps = more pressure)
+    const tapsInLastSecond = state.tapsInWindow.length;
+    let spamMultiplier = 1.0;
+    if(tapsInLastSecond > 3) {
+      spamMultiplier = 1 + (tapsInLastSecond - 3) * 0.3; // +30% per tap over 3
+    }
+
+    // Add pressure (tap-based)
+    const baseTapPressure = abParams.pressureTapRate;
+    state.pressure = clamp(state.pressure + baseTapPressure * spamMultiplier, 0, 1);
+    setPressureUI();
 
     state.shake = Math.min(12, state.shake + 6);
-
-    // Burn death
-    if(state.heat >= 1){
-      endGame('burn');
-    }
+    state.lastTapTime = now;
   }
 
   addEventListener('pointerdown', (e) => {
@@ -448,17 +1175,50 @@
   function step(dt){
     ensureWindow();
 
-    // Heat decay (slower so it matters)
-    const heatDecay = expert ? 0.11 : 0.09; // was ~0.14–0.18
-    state.heat = clamp(state.heat - heatDecay*dt, 0, 1);
-    setHeatUI();
+    // PHASE 1: Pressure system
+    // 1. Time-based pressure increase
+    state.pressure = clamp(state.pressure + abParams.pressureTimeRate * dt, 0, 1);
+
+    // 2. Natural pressure decay (slower than old heat)
+    const pressureDecay = expert ? 0.08 : 0.06;
+    state.pressure = clamp(state.pressure - pressureDecay * dt, 0, 1);
+
+    // 3. Critical Orbit logic
+    if(!state.criticalActive && state.pressure >= abParams.criticalThreshold){
+      // Enter critical orbit
+      state.criticalActive = true;
+      state.criticalStartTime = performance.now();
+      state.runStats.criticalEntries++;
+
+      // Visual feedback
+      state.shake = Math.min(20, state.shake + 12);
+      criticalMsg.style.opacity = '1';
+      console.log('[Critical] CRITICAL ORBIT ENTERED!');
+
+      // Onboarding hint: first critical entry
+      showHint('first_critical');
+    }
+
+    if(state.criticalActive){
+      // Update elapsed time in critical
+      state.criticalElapsed = (performance.now() - state.criticalStartTime) / 1000;
+
+      // Check critical timeout (fail condition)
+      if(state.criticalElapsed >= state.criticalWindow){
+        criticalMsg.style.opacity = '0';
+        endGame('pressure_fail');
+        return;
+      }
+    }
+
+    setPressureUI();
 
     // Orbit speed (IMPORTANT CHANGE):
-    // Heat HIGH => ball SLOW. Heat LOW => ball FAST.
+    // Pressure HIGH => ball SLOW. Pressure LOW => ball FAST.
     const baseSpeed = expert ? BALL_SPEED_BASE_EXPERT : BALL_SPEED_BASE_NORMAL;
     const speedIncrease = expert ? BALL_SPEED_INCREASE_EXPERT : BALL_SPEED_INCREASE_NORMAL;
     const baseFast = Math.min(baseSpeed + state.score * speedIncrease, BALL_SPEED_MAX);
-    const slowFactor = lerp(1.00, 0.45, state.heat); // 0 heat => 1x, 1 heat => 0.45x
+    const slowFactor = lerp(1.00, 0.45, state.pressure); // 0 pressure => 1x, 1 pressure => 0.45x
     state.orbitSpeed = baseFast * slowFactor;
 
     // Rotate rings (freeze during multi-ring animation)
@@ -609,10 +1369,63 @@
         }
         state.bestPerfectStreak = Math.max(state.bestPerfectStreak, state.perfectStreak);
 
+        // PHASE 1: Critical Orbit escape handling
+        if(state.criticalActive){
+          // Critical escape! Full pressure reset + bonus
+          state.pressure = 0;
+          state.criticalActive = false;
+          state.criticalElapsed = 0;
+          state.runStats.criticalEscapes++;
+
+          // Hide critical message
+          criticalMsg.style.opacity = '0';
+
+          // Extra visual feedback for critical escape
+          state.shake = Math.min(30, state.shake + 15);
+          flashGood();
+          console.log('[Critical] ESCAPED! Pressure reset.');
+        } else {
+          // Normal escape: partial pressure reset
+          state.pressure = Math.max(0, state.pressure - abParams.partialResetAmount);
+        }
+
         // Update score immediately, but DON'T advance state.escaped yet (wait for animation)
         state.score += escapedThisFrame;
         state.timeInRing = 0;
         state.timeSinceLastEscape = 0;
+
+        // PHASE 2: Check mode completion
+        const modeConfig = getModeConfig(state.mode);
+        if (modeConfig.finiteTarget && state.score >= modeConfig.finiteTarget) {
+          if (state.mode === 'sprint' && !state.sprintCompleted) {
+            state.sprintCompleted = true;
+            console.log('[Sprint] Completed Sprint 30!');
+            // Will trigger completion screen in next frame
+          } else if (state.mode === 'daily' && !state.dailyCompleted) {
+            state.dailyCompleted = true;
+            console.log('[Daily] Completed Daily Orbit!');
+            // Will trigger completion screen in next frame
+          }
+        }
+
+        // PHASE 2: Update ring escape mission progress
+        const escapeMissions = updateMissionProgress(playerData.missions.active, 'ring_escape', { count: escapedThisFrame });
+        if (escapeMissions.length > 0) {
+          for (const mission of escapeMissions) {
+            showMissionToast(mission);
+          }
+          updateMissionDisplay();
+        }
+
+        // Onboarding hints
+        if(state.score === 1) {
+          // First escape ever
+          showHint('first_escape');
+        }
+        if(pending.length > 1 && !HINTS.first_chain.shown) {
+          // First chain escape
+          showHint('first_chain');
+        }
 
         if(pending.length > 1){
           // Multi-ring chain: queue animation
@@ -624,7 +1437,7 @@
           state.ballTweenRadius = screenRadiusForIndex(state.escaped);
 
           // Haptic feedback (mobile)
-          if(navigator.vibrate){
+          if(envInfo.supportsVibration && playerData.settings.hapticEnabled){
             const vibrateDuration = Math.min(50 * pending.length, 200);
             navigator.vibrate([vibrateDuration, 30]);
           }
@@ -645,6 +1458,18 @@
           // Chain
           state.chainTimer = 1.15 * pending.length;
           state.chain = Math.min(9, state.chain + pending.length);
+
+          // Track max chain for stats
+          state.runStats.maxChain = Math.max(state.runStats.maxChain, state.chain);
+
+          // PHASE 2: Update chain mission progress
+          const chainMissions = updateMissionProgress(playerData.missions.active, 'chain_reached', { chain: state.chain });
+          if (chainMissions.length > 0) {
+            for (const mission of chainMissions) {
+              showMissionToast(mission);
+            }
+            updateMissionDisplay();
+          }
 
           // UI polish: scale chain display
           const scaleAmount = 1.2 + Math.min(0.4, pending.length * 0.1);
@@ -687,6 +1512,9 @@
           state.chainTimer = 1.15;
           state.chain = Math.min(9, state.chain + 1);
 
+          // Track max chain for stats
+          state.runStats.maxChain = Math.max(state.runStats.maxChain, state.chain);
+
           ensureWindow();
         }
 
@@ -696,7 +1524,7 @@
       }
     }
 
-    setHeatUI();
+    setPressureUI();
 
     // Particles update
     for(let i=state.particles.length-1;i>=0;i--){
@@ -733,15 +1561,111 @@
     WINDOW.focus = easeToward(WINDOW.focus, state.escaped, followHz, dt);
     ensureWindow();
 
-    // Burn check (decay + taps can both hit 1, but taps already check)
-    if(state.heat >= 1){
-      endGame('burn');
+    // PHASE 2: Check for mode completion (Sprint/Daily)
+    if (state.sprintCompleted || state.dailyCompleted) {
+      handleModeCompletion();
     }
+  }
+
+  // PHASE 2: Handle Sprint/Daily completion
+  async function handleModeCompletion() {
+    running = false;
+    darkOverlay.style.opacity = '0.7';
+    centerMsg.style.display = 'block';
+    hideMissionPanel(); // Hide mission panel on completion
+
+    const runDuration = performance.now() - state.runStartTime;
+    const timeSeconds = (runDuration / 1000).toFixed(1);
+
+    let headline = 'Victory!';
+    let line1 = '';
+    let tip = 'Tap <b>Start</b> to play again!';
+    let completedMissions = [];
+
+    if (state.sprintCompleted) {
+      headline = 'Sprint Complete!';
+      line1 = `You reached <b>30 rings</b> in <b>${timeSeconds}s</b>!`;
+
+      // Update best time for sprint
+      if (!playerData.bestScore.sprint || runDuration < playerData.bestScore.sprint) {
+        playerData.bestScore.sprint = runDuration;
+        line1 += '<br/><b style="color:var(--good)">NEW BEST TIME!</b>';
+      }
+
+      // Mission progress
+      const sprintMissions = updateMissionProgress(playerData.missions.active, 'sprint_complete', { time_ms: runDuration });
+      if (sprintMissions.length > 0) {
+        completedMissions = sprintMissions;
+        for (const mission of sprintMissions) {
+          showMissionToast(mission);
+        }
+        updateMissionDisplay();
+      }
+    } else if (state.dailyCompleted) {
+      headline = 'Daily Complete!';
+      line1 = `You completed today's Daily Orbit!<br/>Rings: <b>${state.score}</b> | Time: <b>${timeSeconds}s</b>`;
+
+      // Update best for daily
+      if (state.score > playerData.bestScore.daily) {
+        playerData.bestScore.daily = state.score;
+      }
+
+      // Mission progress
+      const dailyMissions = updateMissionProgress(playerData.missions.active, 'daily_complete', {});
+      if (dailyMissions.length > 0) {
+        completedMissions = dailyMissions;
+        for (const mission of dailyMissions) {
+          showMissionToast(mission);
+        }
+        updateMissionDisplay();
+      }
+    }
+
+    document.querySelector('.title').textContent = headline;
+    document.querySelector('.subtitle').innerHTML = line1 + '<br/>' + tip;
+
+    // Update stats
+    playerData.stats.totalRuns++;
+    playerData.stats.totalRings += state.score;
+
+    // STEP 4: Process XP, level-ups, and achievements
+    const progressionResult = await processRunCompletion(playerData, {
+      rings: state.score,
+      max_chain: state.runStats.maxChain,
+      critical_escapes: state.runStats.criticalEscapes,
+      time_ms: Math.round(runDuration),
+      sprintWin: state.sprintCompleted,
+      completedMissions
+    });
+
+    // Display run summary with XP
+    displayRunSummary(progressionResult);
+
+    // Update mode best scores display
+    updateModeBestScores();
+
+    // Save
+    savePlayerData(playerData);
+
+    // STEP 5: Check install triggers for sprint completion - DISABLED FOR NOW
+    // checkPostRunInstallTriggers(playerData, {
+    //   isNewBest: false,
+    //   sprintComplete: state.sprintCompleted
+    // });
+
+    // Log completion
+    telemetry.log(state.sprintCompleted ? 'sprint_complete' : 'daily_complete', {
+      time_ms: Math.round(runDuration),
+      rings: state.score
+    });
   }
 
   // ======= DRAW =======
   function draw(){
-    ctx.fillStyle = COL_BG;
+    // STEP 4: Apply theme colors
+    const theme = applyTheme();
+
+    ctx.fillStyle = theme.bg;
     ctx.fillRect(0,0,W,H);
 
     if(!renderEnabled) return;
@@ -804,7 +1728,7 @@
 
       if(sr < 8) continue;
 
-      ctx.strokeStyle = COL_FG;
+      ctx.strokeStyle = theme.fg;
       ctx.globalAlpha = alpha;
       ctx.lineWidth = state.baseThickness;
 
@@ -863,7 +1787,7 @@
     }
     ctx.globalAlpha = 1;
 
-    // Ball (changes color with heat)
+    // Ball (changes color with pressure)
     const cr = state.rings.get(state.escaped);
     if(cr){
       // Use tween radius if animating, otherwise normal radius
@@ -872,13 +1796,14 @@
       const bx = cx + Math.cos(state.ballAngle)*rr;
       const by = cy + Math.sin(state.ballAngle)*rr;
 
-      ctx.fillStyle = heatColor(state.heat);
+      // PHASE 1: Ball color reflects pressure level
+      ctx.fillStyle = heatColor(state.pressure);
       ctx.beginPath();
       ctx.arc(bx, by, state.ballRadius, 0, Math.PI*2);
       ctx.fill();
     }
 
-    // Particles (green or rainbow)
+    // Particles (green or rainbow) - STEP 4: Apply trail cosmetics
     for(const p of state.particles){
       const a = clamp(p.life / 0.52, 0, 1);
       ctx.globalAlpha = a;
@@ -887,7 +1812,8 @@
       if(p.hue !== undefined){
         ctx.fillStyle = `hsl(${p.hue}, 70%, 60%)`;
       } else {
-        ctx.fillStyle = COL_GOOD;
+        // Apply trail cosmetic
+        ctx.fillStyle = getTrailColor(playerData.cosmetics.trailId);
       }
 
       ctx.beginPath();
@@ -902,20 +1828,20 @@
     ctx.textBaseline = 'middle';
     for(const pop of state.scorePops){
       const alpha = clamp(pop.life, 0, 1);
-      ctx.fillStyle = COL_GOOD;
+      ctx.fillStyle = theme.good;
       ctx.globalAlpha = alpha;
       ctx.fillText(`+${pop.val}`, pop.x, pop.y);
     }
     ctx.globalAlpha = 1;
 
-    // Timer arc (GREEN)
+    // Timer arc (uses theme color)
     if(running){
       const timeLimit = Math.max(2.6, state.maxRingTime - state.score*(expert ? 0.08 : 0.06));
       const t = clamp(state.timeInRing / Math.max(0.0001, timeLimit), 0, 1);
       const baseR = screenRadiusForIndex(state.escaped) * 0.72;
 
       if(baseR > 8){
-        ctx.strokeStyle = COL_GOOD;
+        ctx.strokeStyle = theme.good;
         ctx.globalAlpha = 0.32;
         ctx.lineWidth = 4;
         ctx.beginPath();
@@ -938,5 +1864,5 @@
   // Initial: no gameplay rendering until Start
   elScore.textContent = '0';
   elChain.textContent = 'x1';
-  setHeatUI();
+  setPressureUI();
 })();

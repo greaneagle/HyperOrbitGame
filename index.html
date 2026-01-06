@@ -2,15 +2,128 @@
 
 <html lang="en">  
 <head>  
-<meta charset="utf-8" />  
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />  
-<title>Perfect Orbit</title>  
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta name="description" content="A minimalist orbital escape game. Tap to reverse direction and align with gaps." />
+<meta name="theme-color" content="#0B0F14" />
 
- <link rel="stylesheet" href="styles.css" />
+<!-- Content Security Policy: Allow Firebase Analytics -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.gstatic.com https://www.googletagmanager.com https://*.firebaseapp.com;
+  connect-src 'self' https://www.gstatic.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://firebase.googleapis.com https://*.firebase.googleapis.com https://*.firebaseio.com https://firebaseinstallations.googleapis.com;
+  img-src 'self' data: https: blob:;
+  style-src 'self' 'unsafe-inline';
+  font-src 'self' data:;
+  worker-src 'self' blob:;
+">
+
+<title>Perfect Orbit</title>
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="./manifest.json" />
+
+<!-- iOS-specific -->
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Perfect Orbit" />
+
+<link rel="stylesheet" href="styles.css" />
 
 </head>  
 <body>  
-<canvas id="c"></canvas>  <div class="darkOverlay" id="darkOverlay"></div>  <div class="goodFlash" id="goodFlash"></div>  <div class="hud">  
+<canvas id="c"></canvas>
+<div class="darkOverlay" id="darkOverlay"></div>
+<div class="goodFlash" id="goodFlash"></div>
+<div class="criticalMsg" id="criticalMsg">⚠ CRITICAL ORBIT ⚠<br/><span style="font-size:18px; opacity:0.9;">Escape now!</span></div>
+
+<!-- Mission Toast -->
+<div class="missionToast" id="missionToast"></div>
+
+<!-- Mission Panel (shown during gameplay) -->
+<div class="missionPanel" id="missionPanel">
+  <div id="missionList"></div>
+</div>
+
+<!-- Onboarding hint overlay -->
+<div class="onboardingHint" id="onboardingHint">
+  <div class="hintContent">
+    <div class="hintTitle" id="hintTitle">Hint</div>
+    <div class="hintText" id="hintText"></div>
+    <button class="hintDismiss" id="hintDismiss">Got it!</button>
+  </div>
+</div>
+
+<!-- Install Prompt (Android/Desktop) -->
+<div class="installPrompt" id="installPrompt">
+  <div class="installPromptContent">
+    <button class="installPromptClose" id="installPromptClose">×</button>
+    <div class="installPromptIcon">📱</div>
+    <div class="installPromptTitle">Install Perfect Orbit</div>
+    <div class="installPromptText">Play offline, faster load times, and get the full app experience!</div>
+    <div class="installPromptButtons">
+      <button class="pill good" id="installPromptAccept">Install</button>
+      <button class="pill" id="installPromptDecline">Not Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- iOS Install Education Sheet -->
+<div class="iosInstallSheet" id="iosInstallSheet">
+  <div class="iosInstallContent">
+    <button class="iosInstallClose" id="iosInstallClose">×</button>
+    <div class="iosInstallIcon">📱</div>
+    <div class="iosInstallTitle">Install Perfect Orbit</div>
+    <div class="iosInstallSteps">
+      <div class="iosInstallStep">
+        <div class="stepNumber">1</div>
+        <div class="stepText">Open this page in <strong>Safari</strong></div>
+      </div>
+      <div class="iosInstallStep">
+        <div class="stepNumber">2</div>
+        <div class="stepText">Tap the <strong>Share</strong> button <span style="font-size:18px">⎋</span></div>
+      </div>
+      <div class="iosInstallStep">
+        <div class="stepNumber">3</div>
+        <div class="stepText">Select <strong>"Add to Home Screen"</strong></div>
+      </div>
+    </div>
+    <button class="pill" id="iosInstallDismiss">Got it!</button>
+  </div>
+</div>
+
+<!-- Locker Panel (Cosmetics + Badges) -->
+<div class="lockerPanel" id="lockerPanel">
+  <div class="lockerContent">
+    <button class="lockerClose" id="lockerClose">×</button>
+    <h2 class="lockerTitle">Locker</h2>
+
+    <!-- Progress Display -->
+    <div class="progressDisplay" id="progressDisplay">
+      <div class="levelBadge">Level <span id="lockerLevel">1</span></div>
+      <div class="xpBar">
+        <div class="xpBarFill" id="lockerXpFill"></div>
+      </div>
+      <div class="xpText"><span id="lockerXp">0</span> / <span id="lockerXpNeeded">120</span> XP</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="lockerTabs">
+      <button class="lockerTab active" data-tab="trails">Trails</button>
+      <button class="lockerTab" data-tab="themes">Themes</button>
+      <button class="lockerTab" data-tab="badges">Badges</button>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="lockerTabContent" id="lockerTabContent">
+      <!-- Dynamically populated -->
+    </div>
+  </div>
+</div>
+
+<div class="hud">  
   <div class="toprow">  
     <div class="stat">  
       <div class="label">Rings Escaped</div>  
@@ -20,44 +133,83 @@
       <div class="label">Best</div>  
       <div class="value" id="best">0</div>  
     </div>  
-  </div>    <div class="centerMsg" id="centerMsg">  
-    <div class="title">Perfect Orbit</div>  
-    <div class="subtitle">  
-      Watch the gaps align. <b>Tap</b> to reverse orbit direction.<br/>  
-      If your angle matches the gap, the ball slips outward — sometimes through <b>multiple rings at once</b>.  
-      <br/><span style="opacity:.85">(Spamming taps builds “heat” and makes timing harder.)</span>  
-    </div>  
-    <div class="ctaRow">  
-      <button class="pill good" id="btnStart">Start</button>  
-      <button class="pill" id="btnExpert">Expert: Off</button>  
-      <button class="pill" id="btnReset">Reset Best</button>  
-    </div>  
+  </div>    <div class="centerMsg" id="centerMsg">
+    <div class="title">Perfect Orbit</div>
+    <div class="subtitle">
+      Watch the gaps align. <b>Tap</b> to reverse orbit direction.<br/>
+      If your angle matches the gap, the ball slips outward — sometimes through <b>multiple rings at once</b>.
+      <br/><span style="opacity:.85">(Pressure builds over time. Escape during <b>Critical Orbit</b> to reset it!)</span>
+    </div>
+    <!-- Mode Selector -->
+    <div class="modeSelector">
+      <button class="modePill active" id="modeEndless" data-mode="endless">
+        <div class="modeLabel">Endless</div>
+        <div class="modeBest" id="bestEndless">Best: 0</div>
+      </button>
+      <button class="modePill" id="modeDaily" data-mode="daily">
+        <div class="modeLabel">Daily Orbit</div>
+        <div class="modeBest" id="bestDaily">Best: 0</div>
+      </button>
+      <button class="modePill" id="modeSprint" data-mode="sprint">
+        <div class="modeLabel">Sprint 30</div>
+        <div class="modeBest" id="bestSprint">Best: --</div>
+      </button>
+    </div>
+    <!-- Run Summary (XP + Progress) -->
+    <div class="runSummary" id="runSummary" style="display:none;">
+      <div class="runSummaryXp">
+        <div class="xpEarned">+<span id="xpEarned">0</span> XP</div>
+        <div class="xpBreakdown" id="xpBreakdown"></div>
+      </div>
+      <div class="runSummaryProgress">
+        <div class="progressBar">
+          <div class="progressBarFill" id="summaryProgressFill"></div>
+        </div>
+        <div class="progressText">Level <span id="summaryLevel">1</span> - <span id="summaryXpPercent">0</span>%</div>
+      </div>
+      <div class="unlockNotice" id="unlockNotice" style="display:none;"></div>
+    </div>
+
+    <div class="ctaRow">
+      <button class="pill good" id="btnStart">Start</button>
+      <button class="pill" id="btnExpert">Expert: Off</button>
+      <button class="pill" id="btnLocker">Locker</button>
+      <button class="pill" id="btnInstall" style="display:none;">Install App</button>
+    </div>
   </div>    <div class="bottomrow">  
     <div>  
       <div class="stat">  
         <div class="label">Chain</div>  
         <div class="value" id="chain">x1</div>  
       </div>  
-      <div class="meter" title="Heat (tap-spam penalty)">  
-        <div class="fill" id="heatFill"></div>  
+      <div class="meter" title="Pressure builds over time and from taps">
+        <div class="fill" id="heatFill"></div>
       </div>  
-      <div class="stat" style="margin-top:6px;">  
-        <div class="label">Heat</div>  
-        <div class="value" id="heatText">0%</div>  
+      <div class="stat" style="margin-top:6px;">
+        <div class="label">Pressure</div>
+        <div class="value" id="heatText">0%</div>
       </div>  
     </div>  
     <div class="hint">  
       <div><b>Goal:</b> escape as many rings as possible.</div>  
       <div><b>Sweet spot:</b> wait ~3–4s, then one meaningful tap.</div>  
     </div>  
-  </div>  
-</div> 
+  </div>
+</div>
 
-<script src="script.js"></script>
+<!-- Step 7: Update notification toast -->
+<div class="updateToast" id="updateToast">
+  <div class="updateToastContent">
+    <div class="updateToastTitle">🎮 Update Available</div>
+    <div class="updateToastText">Tap to refresh and get the latest version</div>
+  </div>
+</div>
+
+<script type="module" src="script.js"></script>
 
 
 
 
-</body>  
+</body>
 </html>
   
