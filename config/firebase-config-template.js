@@ -26,7 +26,7 @@ let analytics = null;
 export function initFirebase() {
   try {
     // Check if using placeholder config (GitHub Actions replaces these)
-    if (firebaseConfig.apiKey === "${FIREBASE_API_KEY}") {
+    if (firebaseConfig.apiKey === "Testing") {
       console.warn('[Firebase] Using placeholder config - analytics will not send until deployed.');
       return null;
     }
