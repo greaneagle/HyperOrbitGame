@@ -198,8 +198,9 @@ export async function loadAchievements() {
 }
 
 /**
- * Check achievements after a run
+ * Check achievements during or after a run
  * Returns array of newly unlocked achievements
+ * Can be called mid-run for immediate feedback
  */
 export function checkAchievements(playerData, runSummary) {
   if (!achievementsCache) {
@@ -233,11 +234,11 @@ export function checkAchievements(playerData, runSummary) {
         break;
 
       case 'maxChain':
-        unlocked = runSummary.maxChain >= achievement.threshold;
+        unlocked = (runSummary.maxChain || runSummary.max_chain) >= achievement.threshold;
         break;
 
       case 'criticalEscapes':
-        unlocked = runSummary.criticalEscapes >= achievement.threshold;
+        unlocked = (runSummary.criticalEscapes || runSummary.critical_escapes) >= achievement.threshold;
         break;
 
       case 'sprintComplete':
@@ -282,6 +283,8 @@ export function checkAchievements(playerData, runSummary) {
         achievement_name: achievement.name,
         xp_reward: achievement.reward.xp || 0
       });
+
+      console.log('[Achievement] Unlocked:', achievement.name, `+${achievement.reward.xp} XP`);
     }
   }
 

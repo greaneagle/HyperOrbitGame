@@ -304,6 +304,12 @@ await initApp();
   const achievementHintName = document.getElementById('achievementHintName');
   const achievementHintDesc = document.getElementById('achievementHintDesc');
   const achievementHintProgress = document.getElementById('achievementHintProgress');
+  const achievementToast = document.getElementById('achievementToast');
+  const achievementToastTitle = document.getElementById('achievementToastTitle');
+  const achievementToastXp = document.getElementById('achievementToastXp');
+
+  // Track achievements unlocked during current run
+  let runAchievements = [];
 
   // Use playerData instead of localStorage directly
   let best = playerData.bestScore.endless;
@@ -545,9 +551,10 @@ await initApp();
         unlockText.push(`Unlocked: ${unlock.name}`);
       }
 
-      // Achievements
-      for (const achievement of progressionResult.achievements) {
-        unlockText.push(`🏆 ${achievement.name}`);
+      // Achievements (from both mid-run and end-of-run checks)
+      const allAchievements = [...new Set([...runAchievements, ...progressionResult.achievements])];
+      for (const achievement of allAchievements) {
+        unlockText.push(`🏆 ${achievement.name} (+${achievement.reward.xp} XP)`);
       }
 
       unlockNotice.innerHTML = unlockText.join('<br/>');
@@ -674,6 +681,66 @@ await initApp();
 
     html += '</div>';
     lockerTabContent.innerHTML = html;
+  }
+
+  // ======= ACHIEVEMENT SYSTEM =======
+
+  /**
+   * Show achievement unlock toast (mid-run)
+   */
+  function showAchievementToast(achievement) {
+    achievementToastTitle.textContent = achievement.name;
+    achievementToastXp.textContent = `+${achievement.reward.xp} XP`;
+    achievementToast.classList.add('show');
+
+    // Flash good effect
+    flashGood();
+
+    // Animate the achievement hint area
+    const achievementHint = document.getElementById('achievementHint');
+    achievementHint.classList.add('completed');
+    setTimeout(() => {
+      achievementHint.classList.remove('completed');
+    }, 600);
+
+    // Add floating XP number from achievement hint location
+    const hintRect = achievementHint.getBoundingClientRect();
+    state.scorePops.push({
+      x: hintRect.left + hintRect.width / 2,
+      y: hintRect.top + hintRect.height / 2,
+      val: `+${achievement.reward.xp} XP`,
+      life: 1.5,
+      vy: -80,
+      isXP: true
+    });
+
+    // Hide toast after 3 seconds
+    setTimeout(() => {
+      achievementToast.classList.remove('show');
+    }, 3000);
+  }
+
+  /**
+   * Check for achievements mid-run and show immediate feedback
+   */
+  async function checkMidRunAchievements() {
+    if (!running) return;
+
+    const newAchievements = checkAchievements(playerData, {
+      rings: state.score,
+      maxChain: state.runStats.maxChain,
+      criticalEscapes: state.runStats.criticalEscapes,
+      max_chain: state.runStats.maxChain,
+      critical_escapes: state.runStats.criticalEscapes
+    });
+
+    // Show toast for any new achievements
+    for (const achievement of newAchievements) {
+      runAchievements.push(achievement);
+      showAchievementToast(achievement);
+      updateAchievementHint(); // Update the hint to show next achievement
+      savePlayerData(playerData); // Save immediately
+    }
   }
 
   // ======= ACHIEVEMENT HINT (Bottom Right) =======
@@ -1057,6 +1124,9 @@ await initApp();
     // Reset tap tracking
     state.lastTapTime = 0;
     state.tapsInWindow = [];
+
+    // Reset run achievements tracking
+    runAchievements = [];
   }
 
   async function endGame(reason){
@@ -1466,6 +1536,9 @@ await initApp();
           state.shake = Math.min(30, state.shake + 15);
           flashGood();
           console.log('[Critical] ESCAPED! Pressure reset.');
+
+          // Check for critical escape achievements
+          checkMidRunAchievements();
         } else {
           // Normal escape: partial pressure reset
           state.pressure = Math.max(0, state.pressure - abParams.partialResetAmount);
@@ -1552,6 +1625,9 @@ await initApp();
             }
             updateMissionDisplay();
           }
+
+          // Check for chain achievements
+          checkMidRunAchievements();
 
           // UI polish: scale chain display
           const scaleAmount = 1.2 + Math.min(0.4, pending.length * 0.1);
@@ -1907,15 +1983,29 @@ await initApp();
     }
     ctx.globalAlpha = 1;
 
-    // Score popups (floating "+X" text)
-    ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+    // Score popups (floating "+X" text or "+XP")
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for(const pop of state.scorePops){
       const alpha = clamp(pop.life, 0, 1);
-      ctx.fillStyle = theme.good;
+
+      if (pop.isXP) {
+        // XP popup (from achievements)
+        ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+        ctx.fillStyle = '#FFD700'; // Gold color for XP
+      } else {
+        // Regular score popup
+        ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+        ctx.fillStyle = theme.good;
+      }
+
       ctx.globalAlpha = alpha;
-      ctx.fillText(`+${pop.val}`, pop.x, pop.y);
+
+      if (pop.isXP) {
+        ctx.fillText(pop.val, pop.x, pop.y);
+      } else {
+        ctx.fillText(`+${pop.val}`, pop.x, pop.y);
+      }
     }
     ctx.globalAlpha = 1;
 
