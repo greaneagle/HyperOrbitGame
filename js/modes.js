@@ -143,6 +143,51 @@ export function isNewDay(playerData, currentDateId) {
 }
 
 /**
+ * Update daily streak when player plays on a new day
+ * @param {object} playerData - Player data object
+ * @param {string} currentDateId - Today's date ID (YYYYMMDD format)
+ */
+export function updateDailyStreak(playerData, currentDateId) {
+  const lastDate = playerData.stats.lastDailyDate;
+
+  if (!lastDate) {
+    // First time playing
+    playerData.stats.dailyStreak = 1;
+    console.log('[Streak] Started daily streak: 1 day');
+  } else if (lastDate === currentDateId) {
+    // Already played today, no change
+    return;
+  } else {
+    // Check if it's consecutive days
+    const lastDateObj = new Date(
+      parseInt(lastDate.slice(0, 4)), // year
+      parseInt(lastDate.slice(4, 6)) - 1, // month (0-indexed)
+      parseInt(lastDate.slice(6, 8)) // day
+    );
+
+    const todayDateObj = new Date(
+      parseInt(currentDateId.slice(0, 4)),
+      parseInt(currentDateId.slice(4, 6)) - 1,
+      parseInt(currentDateId.slice(6, 8))
+    );
+
+    // Calculate difference in days
+    const diffTime = todayDateObj.getTime() - lastDateObj.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) {
+      // Consecutive day - increment streak
+      playerData.stats.dailyStreak++;
+      console.log(`[Streak] Daily streak continued: ${playerData.stats.dailyStreak} days`);
+    } else if (diffDays > 1) {
+      // Streak broken - reset to 1
+      playerData.stats.dailyStreak = 1;
+      console.log('[Streak] Streak broken, resetting to 1 day');
+    }
+  }
+}
+
+/**
  * Get gap center for a ring index in daily mode
  * @param {object} dailyPattern - Daily pattern object
  * @param {number} ringIndex - Ring index

@@ -33,9 +33,53 @@ http://localhost:8000
 ### Progression
 - **XP System**: Earn experience from rings escaped
 - **Level Up**: Progress through player levels
-- **Cosmetics**: Unlock trails and themes
+- **Cosmetics**: Unlock trails and themes (see Cosmetic System below)
 - **Achievements**: 12 achievement badges to collect
 - **Missions**: 3 active missions with daily rotation (35 total templates)
+
+### Cosmetic System
+
+#### 🎨 Themes (Environment Skins)
+Themes change the entire color palette of the game, affecting background, rings, UI, and visual feedback:
+
+| Theme | Unlock | Description |
+|-------|--------|-------------|
+| **Default** | Default | Dark neutral aesthetic with bright green accents |
+| **Neon** | Level 5 | Cyberpunk vibes - electric cyan and magenta highlights |
+| **Sunset** | Achievement: 7-day streak | Warm palette - golden-orange and pink |
+| **Midnight** | Achievement: 100 runs | Cool blue aesthetic - icy and serene |
+| **Ocean** | Level 12 | Deep water theme - navy, cyan-blue, and teal |
+
+Each theme defines 3 core colors:
+- **Background**: Canvas fill color
+- **Foreground**: Rings, text, and UI borders
+- **Accent**: Success feedback, score popups, timer arc
+
+*Multi-ring escape effects (glowing rings) automatically adapt to theme colors, pulsing between foreground and accent colors.*
+
+#### ✨ Trails (Particle Effect Skins)
+Trails customize the particle effects when escaping rings. Each trail has unique visual properties:
+
+| Trail | Unlock | Visual Effect |
+|-------|--------|---------------|
+| **Default** | Default | Green circles (adapts to theme accent color) |
+| **Sparkle** ⭐ | Level 2 | Gold 4-pointed stars, longer life, gentle floating |
+| **Rainbow** 🌈 | Achievement: Chain 5 | Circles with animated rainbow color cycling |
+| **Inferno** 🔥 | Achievement: Critical Pro | Red-orange particles, upward-biased, short-lived flames |
+| **Lightning** ⚡ | Achievement: Sprint Fast | Electric blue velocity-stretched lines, extremely fast |
+| **Neon Glow** 💚 | Level 8 | Neon green with shadow glow effect, medium persistence |
+| **Cosmic** 🌌 | Achievement: Total Rings 500 | Purple particles with spiral motion, long-lasting cosmic dust |
+
+**Trail Properties** (customizable per trail):
+- **Particle Count**: Density of the effect
+- **Shape**: Circles, stars, or velocity-stretched lines
+- **Speed**: How fast particles move (60-500 px/s range)
+- **Lifespan**: How long particles persist (0.1-0.7s range)
+- **Size**: Particle radius and variation
+- **Motion**: Special effects like upward bias, spiral rotation, or velocity stretching
+- **Effects**: Shadow glow, varied friction
+
+**Implementation**: `script.js` ([lines 149-239](script.js#L149-L239))
 
 ### Technical Features
 - **A/B Testing**: Permanent cohort assignment for experimentation
@@ -118,9 +162,74 @@ V2/
 | `js/storage.js` | Player data structure and persistence |
 | `js/ab.js` | A/B experiment parameters |
 | `js/modes.js` | Game mode configurations |
+| `js/progression.js` | Cosmetics definitions and unlock conditions |
 | `data/missions.json` | Mission templates and targets |
 | `data/achievements.json` | Achievement definitions |
 | `styles.css` | All visual styling |
+
+### Adding New Cosmetics
+
+#### Adding a New Theme
+
+1. **Define theme metadata** in `js/progression.js`:
+   ```javascript
+   export const COSMETICS = {
+     themes: [
+       // ... existing themes
+       { id: 'myTheme', name: 'My Theme', unlockType: 'level', unlockValue: 20 }
+     ]
+   }
+   ```
+
+2. **Add color palette** in `script.js` (`getThemeColors` function):
+   ```javascript
+   case 'myTheme':
+     return {
+       bg: '#1A1A2E',    // Background color
+       fg: '#16213E',    // Foreground (rings, text)
+       good: '#0F3460'   // Accent (success feedback)
+     };
+   ```
+
+That's it! The theme will automatically work with all game systems.
+
+#### Adding a New Trail
+
+1. **Define trail metadata** in `js/progression.js`:
+   ```javascript
+   export const COSMETICS = {
+     trails: [
+       // ... existing trails
+       { id: 'myTrail', name: 'My Trail', unlockType: 'achievement', unlockValue: 'ach_id' }
+     ]
+   }
+   ```
+
+2. **Add color** in `script.js` (`getTrailColor` function):
+   ```javascript
+   case 'myTrail': return '#FF5733';
+   ```
+
+3. **Add particle configuration** in `script.js` (`getTrailConfig` function):
+   ```javascript
+   case 'myTrail':
+     return {
+       count: 20,              // Number of particles
+       size: 2.5,              // Base size in pixels
+       sizeVar: [0.8, 1.5],    // Size variation range
+       speed: [100, 250],      // Speed range (px/s)
+       life: [0.3, 0.5],       // Lifespan range (seconds)
+       shape: 'circle',        // 'circle', 'star', or 'line'
+       friction: 2.0,          // Deceleration rate
+       // Optional special effects:
+       glow: true,             // Shadow glow
+       spiral: true,           // Spiral motion
+       upwardBias: -0.2,       // Directional bias
+       stretch: true           // Velocity-based stretching (for 'line' shape)
+     };
+   ```
+
+The particle system supports mixing and matching these properties to create unique effects!
 
 ### Debugging
 
@@ -213,6 +322,9 @@ To re-enable (not recommended until testing):
 - ✅ Three game modes (Endless, Daily, Sprint)
 - ✅ Mission system (35 missions, 3 active)
 - ✅ XP, levels, cosmetics system
+  - ✅ 5 themes with full game palette integration
+  - ✅ 7 trails with unique particle effects (shapes, physics, special effects)
+  - ✅ Theme-adaptive multi-ring glow effects
 - ✅ 12 achievements
 - ✅ A/B testing infrastructure
 - ✅ Platform detection
@@ -281,5 +393,5 @@ MIT License..
 ---
 
 **Version**: pv02.2+build.003
-**Last Updated**: 2026-01-06
-**Status**: Stable (PWA features disabled)
+**Last Updated**: 2026-01-08
+**Status**: Stable (PWA features disabled, Enhanced cosmetics system)

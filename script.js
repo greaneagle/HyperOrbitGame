@@ -5,7 +5,7 @@ import { initPlayerData, savePlayerData, getVersion } from './js/storage.js';
 import { getEnvInfo, logEnvInfo } from './js/env.js';
 import { ensureABGroup, getABParams, getExperimentInfo } from './js/ab.js';
 import * as telemetry from './js/telemetry.js';
-import { MODES, getModeConfig, getTodayId, getDailyPattern, getDailyGapCenter, isNewDay } from './js/modes.js';
+import { MODES, getModeConfig, getTodayId, getDailyPattern, getDailyGapCenter, isNewDay, updateDailyStreak } from './js/modes.js';
 import { loadMissions, rollMissions, updateMissionProgress, formatMissionProgress } from './js/missions.js';
 import { loadAchievements, processRunCompletion, getAllCosmetics, isCosmeticUnlocked, selectCosmetic, getProgressionStatus } from './js/progression.js';
 // PWA imports disabled for now
@@ -63,10 +63,15 @@ async function initApp() {
   // Step 8b: Load achievements (Step 4)
   await loadAchievements();
 
-  // Step 9: Check if new day for daily missions
+  // Step 9: Check if new day for daily missions and streak tracking
   const todayId = getTodayId();
   if (isNewDay(playerData, todayId)) {
     console.log('[Missions] New day detected, rolling new missions');
+
+    // Update daily streak
+    updateDailyStreak(playerData, todayId);
+
+    // Roll new missions
     const rolled = rollMissions(missionTemplates, playerData.missions.cooldown);
     playerData.missions.active = rolled;
     playerData.missions.dateRolled = todayId;
@@ -78,6 +83,11 @@ async function initApp() {
     const rolled = rollMissions(missionTemplates, playerData.missions.cooldown);
     playerData.missions.active = rolled;
     playerData.missions.dateRolled = todayId;
+
+    // Also update streak for first-time play
+    updateDailyStreak(playerData, todayId);
+    playerData.stats.lastDailyDate = todayId;
+
     savePlayerData(playerData);
   }
 
@@ -133,6 +143,102 @@ await initApp();
   }
 
   /**
+   * Get trail-specific particle configuration
+   * Returns properties: count, size, speed, life, shape, friction
+   */
+  function getTrailConfig(trailId) {
+    switch(trailId) {
+      case 'sparkle':
+        // Sparkly, twinkling effect with varied sizes
+        return {
+          count: 20,           // More particles for sparkly effect
+          size: 2.0,           // Slightly smaller base
+          sizeVar: [0.5, 2.0], // Wide size variation for twinkling
+          speed: [60, 140],    // Slower, more gentle
+          life: [0.4, 0.7],    // Longer life for twinkle
+          shape: 'star',       // Star shape
+          friction: 3.0        // Faster slowdown
+        };
+
+      case 'rainbow':
+        // Flowing, smooth rainbow trail
+        return {
+          count: 18,
+          size: 2.2,
+          sizeVar: [0.85, 1.35],
+          speed: [90, 260],
+          life: [0.22, 0.52],
+          shape: 'circle',
+          friction: 2.6
+        };
+
+      case 'inferno':
+        // Fire-like effect: upward bias, varied sizes
+        return {
+          count: 24,           // Dense like flames
+          size: 2.5,           // Larger particles
+          sizeVar: [0.6, 1.8], // Varied like flames
+          speed: [100, 300],   // Fast and chaotic
+          life: [0.15, 0.35],  // Short-lived like fire
+          shape: 'circle',
+          friction: 1.8,       // Less friction, stays fast
+          upwardBias: -0.3     // Bias upward (negative Y)
+        };
+
+      case 'lightning':
+        // Quick, electric bolts - fast and short
+        return {
+          count: 12,           // Fewer but more impactful
+          size: 1.5,           // Thin like lightning
+          sizeVar: [1.0, 3.0], // Some very long streaks
+          speed: [300, 500],   // Very fast!
+          life: [0.1, 0.25],   // Very short duration
+          shape: 'line',       // Line shape for lightning bolts
+          friction: 0.8,       // Minimal friction, stays fast
+          stretch: true        // Stretch based on velocity
+        };
+
+      case 'neon':
+        // Glowing neon with medium persistence
+        return {
+          count: 16,
+          size: 2.8,           // Larger glow
+          sizeVar: [0.9, 1.2], // More uniform size
+          speed: [80, 180],    // Medium speed
+          life: [0.3, 0.6],    // Medium-long life
+          shape: 'circle',
+          friction: 2.2,       // Smooth deceleration
+          glow: true           // Extra glow effect
+        };
+
+      case 'cosmic':
+        // Mystical, swirling cosmic dust
+        return {
+          count: 22,
+          size: 1.8,
+          sizeVar: [0.5, 1.5],
+          speed: [70, 200],
+          life: [0.35, 0.65],  // Long-lasting
+          shape: 'circle',
+          friction: 3.5,       // Heavy friction, swirls to stop
+          spiral: true         // Add spiral motion
+        };
+
+      default:
+        // Default trail
+        return {
+          count: 16,
+          size: 2.2,
+          sizeVar: [0.85, 1.35],
+          speed: [90, 260],
+          life: [0.22, 0.52],
+          shape: 'circle',
+          friction: 2.6
+        };
+    }
+  }
+
+  /**
    * Get theme colors based on selected cosmetic
    */
   function getThemeColors(themeId) {
@@ -168,6 +274,34 @@ await initApp();
           good: COL_GOOD
         };
     }
+  }
+
+  /**
+   * Get theme-appropriate color for multi-ring glow effects
+   * @param {number} offset - Animation offset (0-360) for color variation
+   * @returns {string} CSS color string
+   */
+  function getThemeGlowColor(offset) {
+    const theme = getThemeColors(playerData.cosmetics.themeId);
+
+    // Convert hex to RGB for interpolation
+    function hexToRgb(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return { r, g, b };
+    }
+
+    // Interpolate between two colors based on offset
+    const t = (Math.sin(offset * Math.PI / 180) + 1) / 2; // 0 to 1
+    const fg = hexToRgb(theme.fg);
+    const good = hexToRgb(theme.good);
+
+    const r = Math.round(fg.r + (good.r - fg.r) * t);
+    const g = Math.round(fg.g + (good.g - fg.g) * t);
+    const b = Math.round(fg.b + (good.b - fg.b) * t);
+
+    return `rgb(${r}, ${g}, ${b})`;
   }
 
   /**
@@ -1029,17 +1163,48 @@ await initApp();
   }
 
   // ======= FX =======
-  function addParticles(x,y, n=16, size=2.2){
-    for(let i=0;i<n;i++){
-      const a = Math.random()*Math.PI*2;
-      const s = rand(90, 260);
-      state.particles.push({
-        x,y,
-        vx: Math.cos(a)*s,
-        vy: Math.sin(a)*s,
-        life: rand(0.22,0.52),
-        r: size * rand(0.85, 1.35)
-      });
+  function addParticles(x, y, n=16, size=2.2, useTrailConfig=true){
+    // Get trail-specific configuration if enabled
+    const config = useTrailConfig ? getTrailConfig(playerData.cosmetics.trailId) : null;
+
+    const particleCount = config ? config.count : n;
+    const baseSize = config ? config.size : size;
+    const sizeVar = config ? config.sizeVar : [0.85, 1.35];
+    const speedRange = config ? config.speed : [90, 260];
+    const lifeRange = config ? config.life : [0.22, 0.52];
+    const friction = config ? config.friction : 2.6;
+    const shape = config ? config.shape : 'circle';
+    const upwardBias = config ? config.upwardBias : 0;
+    const spiral = config ? config.spiral : false;
+    const glow = config ? config.glow : false;
+    const stretch = config ? config.stretch : false;
+
+    for(let i=0; i<particleCount; i++){
+      let a = Math.random() * Math.PI * 2;
+
+      // Apply upward bias for fire-like effects
+      if(upwardBias !== 0){
+        a += upwardBias * Math.PI;
+      }
+
+      const s = rand(speedRange[0], speedRange[1]);
+
+      const particle = {
+        x, y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s,
+        life: rand(lifeRange[0], lifeRange[1]),
+        r: baseSize * rand(sizeVar[0], sizeVar[1]),
+        friction: friction,
+        shape: shape
+      };
+
+      // Add special properties
+      if(spiral) particle.spiral = true;
+      if(glow) particle.glow = true;
+      if(stretch) particle.stretch = true;
+
+      state.particles.push(particle);
     }
   }
 
@@ -1404,8 +1569,8 @@ await initApp();
         const bx = state.cx + Math.cos(state.ballAngle) * state.ballTweenRadius;
         const by = state.cy + Math.sin(state.ballAngle) * state.ballTweenRadius;
 
-        // Slow global rainbow shift with variation
-        const hue = (Date.now() / 15 + rand(-20, 20)) % 360;
+        // Slow global shift with variation for theme-based glow colors
+        const glowOffset = (Date.now() / 15 + rand(-20, 20)) % 360;
 
         for(let i = 0; i < 3; i++){
           const a = Math.random() * Math.PI * 2;
@@ -1417,7 +1582,7 @@ await initApp();
             vy: Math.sin(a) * s,
             life: rand(0.22, 0.52),
             r: 1.5 * rand(0.85, 1.35),
-            hue: hue
+            glowOffset: glowOffset
           });
         }
       }
@@ -1691,10 +1856,24 @@ await initApp();
     for(let i=state.particles.length-1;i>=0;i--){
       const p = state.particles[i];
       p.life -= dt;
+
+      // Apply spiral motion (cosmic trail)
+      if(p.spiral){
+        const angle = Math.atan2(p.vy, p.vx);
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        const newAngle = angle + 3 * dt; // Rotate 3 radians per second
+        p.vx = Math.cos(newAngle) * speed;
+        p.vy = Math.sin(newAngle) * speed;
+      }
+
       p.x += p.vx*dt;
       p.y += p.vy*dt;
-      p.vx *= (1 - 2.6*dt);
-      p.vy *= (1 - 2.6*dt);
+
+      // Use custom friction or default
+      const friction = p.friction !== undefined ? p.friction : 2.6;
+      p.vx *= (1 - friction*dt);
+      p.vy *= (1 - friction*dt);
+
       if(p.life <= 0) state.particles.splice(i,1);
     }
 
@@ -1855,7 +2034,7 @@ await initApp();
 
       const gw = effectiveGapWidth(r);
 
-      ctx.strokeStyle = `hsl(${glow.hueOffset}, 100%, 60%)`;
+      ctx.strokeStyle = getThemeGlowColor(glow.hueOffset);
       ctx.globalAlpha = glow.fade * 0.8;
       ctx.lineWidth = state.baseThickness * 1.8;
 
@@ -1966,20 +2145,76 @@ await initApp();
 
     // Particles (green or rainbow) - STEP 4: Apply trail cosmetics
     for(const p of state.particles){
-      const a = clamp(p.life / 0.52, 0, 1);
+      // Calculate alpha based on max possible life (0.7 is the max from configs)
+      const maxLife = 0.7;
+      const a = clamp(p.life / maxLife, 0, 1);
       ctx.globalAlpha = a;
 
-      // Rainbow particles (from chain trails) or standard green
-      if(p.hue !== undefined){
-        ctx.fillStyle = `hsl(${p.hue}, 70%, 60%)`;
+      // Theme-based glow particles (from multi-ring chains) or standard trail color
+      if(p.glowOffset !== undefined){
+        ctx.fillStyle = getThemeGlowColor(p.glowOffset);
+        ctx.strokeStyle = getThemeGlowColor(p.glowOffset);
       } else {
         // Apply trail cosmetic
         ctx.fillStyle = getTrailColor(playerData.cosmetics.trailId);
+        ctx.strokeStyle = getTrailColor(playerData.cosmetics.trailId);
       }
 
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-      ctx.fill();
+      // Add glow effect for neon trail
+      if(p.glow){
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = ctx.fillStyle;
+      }
+
+      // Render based on shape
+      const shape = p.shape || 'circle';
+
+      if(shape === 'star'){
+        // Draw 4-pointed star (sparkle trail)
+        ctx.beginPath();
+        const spikes = 4;
+        const outerRadius = p.r * 1.5;
+        const innerRadius = p.r * 0.6;
+        for(let i = 0; i < spikes * 2; i++){
+          const radius = i % 2 === 0 ? outerRadius : innerRadius;
+          const angle = (i * Math.PI) / spikes;
+          const x = p.x + Math.cos(angle) * radius;
+          const y = p.y + Math.sin(angle) * radius;
+          if(i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+      } else if(shape === 'line'){
+        // Draw line stretched by velocity (lightning trail)
+        ctx.beginPath();
+        ctx.lineWidth = p.r * 0.5;
+        ctx.lineCap = 'round';
+
+        if(p.stretch){
+          // Stretch line based on velocity
+          const len = Math.sqrt(p.vx * p.vx + p.vy * p.vy) * 0.05;
+          const angle = Math.atan2(p.vy, p.vx);
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x + Math.cos(angle) * len, p.y + Math.sin(angle) * len);
+        } else {
+          ctx.moveTo(p.x - p.r, p.y);
+          ctx.lineTo(p.x + p.r, p.y);
+        }
+        ctx.stroke();
+
+      } else {
+        // Default circle
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      // Reset glow
+      if(p.glow){
+        ctx.shadowBlur = 0;
+      }
     }
     ctx.globalAlpha = 1;
 
