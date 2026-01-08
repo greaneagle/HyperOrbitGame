@@ -151,11 +151,11 @@ await initApp();
       case 'sparkle':
         // Sparkly, twinkling effect with varied sizes
         return {
-          count: 20,           // More particles for sparkly effect
-          size: 2.0,           // Slightly smaller base
-          sizeVar: [0.5, 2.0], // Wide size variation for twinkling
-          speed: [60, 140],    // Slower, more gentle
-          life: [0.4, 0.7],    // Longer life for twinkle
+          count: 35,           // Dense sparkle burst
+          size: 3.0,           // Bigger stars
+          sizeVar: [0.6, 2.2], // Wide size variation for twinkling
+          speed: [60, 160],    // Slower, more gentle
+          life: [0.5, 0.8],    // Longer life for twinkle
           shape: 'star',       // Star shape
           friction: 3.0        // Faster slowdown
         };
@@ -163,11 +163,11 @@ await initApp();
       case 'rainbow':
         // Flowing, smooth rainbow trail
         return {
-          count: 18,
-          size: 2.2,
-          sizeVar: [0.85, 1.35],
+          count: 30,
+          size: 3.5,
+          sizeVar: [0.85, 1.4],
           speed: [90, 260],
-          life: [0.22, 0.52],
+          life: [0.3, 0.6],
           shape: 'circle',
           friction: 2.6
         };
@@ -175,11 +175,11 @@ await initApp();
       case 'inferno':
         // Fire-like effect: upward bias, varied sizes
         return {
-          count: 24,           // Dense like flames
-          size: 2.5,           // Larger particles
-          sizeVar: [0.6, 1.8], // Varied like flames
-          speed: [100, 300],   // Fast and chaotic
-          life: [0.15, 0.35],  // Short-lived like fire
+          count: 40,           // Dense like flames
+          size: 3.5,           // Larger particles
+          sizeVar: [0.6, 2.0], // Varied like flames
+          speed: [120, 320],   // Fast and chaotic
+          life: [0.2, 0.4],    // Short-lived like fire
           shape: 'circle',
           friction: 1.8,       // Less friction, stays fast
           upwardBias: -0.3     // Bias upward (negative Y)
@@ -188,11 +188,11 @@ await initApp();
       case 'lightning':
         // Quick, electric bolts - fast and short
         return {
-          count: 12,           // Fewer but more impactful
-          size: 1.5,           // Thin like lightning
-          sizeVar: [1.0, 3.0], // Some very long streaks
-          speed: [300, 500],   // Very fast!
-          life: [0.1, 0.25],   // Very short duration
+          count: 25,           // More bolts for impact
+          size: 2.5,           // Thicker bolts
+          sizeVar: [1.2, 3.5], // Some very long streaks
+          speed: [350, 550],   // Very fast!
+          life: [0.15, 0.3],   // Short duration
           shape: 'line',       // Line shape for lightning bolts
           friction: 0.8,       // Minimal friction, stays fast
           stretch: true        // Stretch based on velocity
@@ -201,11 +201,11 @@ await initApp();
       case 'neon':
         // Glowing neon with medium persistence
         return {
-          count: 16,
-          size: 2.8,           // Larger glow
-          sizeVar: [0.9, 1.2], // More uniform size
-          speed: [80, 180],    // Medium speed
-          life: [0.3, 0.6],    // Medium-long life
+          count: 28,
+          size: 4.0,           // Large glow
+          sizeVar: [0.9, 1.3], // More uniform size
+          speed: [90, 200],    // Medium speed
+          life: [0.4, 0.7],    // Medium-long life
           shape: 'circle',
           friction: 2.2,       // Smooth deceleration
           glow: true           // Extra glow effect
@@ -214,11 +214,11 @@ await initApp();
       case 'cosmic':
         // Mystical, swirling cosmic dust
         return {
-          count: 22,
-          size: 1.8,
-          sizeVar: [0.5, 1.5],
-          speed: [70, 200],
-          life: [0.35, 0.65],  // Long-lasting
+          count: 35,
+          size: 2.8,
+          sizeVar: [0.6, 1.8],
+          speed: [80, 220],
+          life: [0.45, 0.75],  // Long-lasting
           shape: 'circle',
           friction: 3.5,       // Heavy friction, swirls to stop
           spiral: true         // Add spiral motion
@@ -227,11 +227,11 @@ await initApp();
       default:
         // Default trail
         return {
-          count: 16,
-          size: 2.2,
-          sizeVar: [0.85, 1.35],
-          speed: [90, 260],
-          life: [0.22, 0.52],
+          count: 25,
+          size: 3.2,
+          sizeVar: [0.85, 1.4],
+          speed: [100, 280],
+          life: [0.3, 0.6],
           shape: 'circle',
           friction: 2.6
         };
@@ -1188,12 +1188,14 @@ await initApp();
       }
 
       const s = rand(speedRange[0], speedRange[1]);
+      const initialLife = rand(lifeRange[0], lifeRange[1]);
 
       const particle = {
         x, y,
         vx: Math.cos(a) * s,
         vy: Math.sin(a) * s,
-        life: rand(lifeRange[0], lifeRange[1]),
+        life: initialLife,
+        maxLife: initialLife,  // Store initial life for alpha calculation
         r: baseSize * rand(sizeVar[0], sizeVar[1]),
         friction: friction,
         shape: shape
@@ -1575,14 +1577,18 @@ await initApp();
         for(let i = 0; i < 3; i++){
           const a = Math.random() * Math.PI * 2;
           const s = rand(90, 260);
+          const initialLife = rand(0.22, 0.52);
           state.particles.push({
             x: bx,
             y: by,
             vx: Math.cos(a) * s,
             vy: Math.sin(a) * s,
-            life: rand(0.22, 0.52),
+            life: initialLife,
+            maxLife: initialLife,
             r: 1.5 * rand(0.85, 1.35),
-            glowOffset: glowOffset
+            glowOffset: glowOffset,
+            friction: 2.6,
+            shape: 'circle'
           });
         }
       }
@@ -2145,8 +2151,8 @@ await initApp();
 
     // Particles (green or rainbow) - STEP 4: Apply trail cosmetics
     for(const p of state.particles){
-      // Calculate alpha based on max possible life (0.7 is the max from configs)
-      const maxLife = 0.7;
+      // Calculate alpha based on particle's max life (stored when created)
+      const maxLife = p.maxLife || 0.52;
       const a = clamp(p.life / maxLife, 0, 1);
       ctx.globalAlpha = a;
 
