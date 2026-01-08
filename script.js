@@ -7,7 +7,7 @@ import { ensureABGroup, getABParams, getExperimentInfo } from './js/ab.js';
 import * as telemetry from './js/telemetry.js';
 import { MODES, getModeConfig, getTodayId, getDailyPattern, getDailyGapCenter, isNewDay, updateDailyStreak } from './js/modes.js';
 import { loadMissions, rollMissions, updateMissionProgress, formatMissionProgress } from './js/missions.js';
-import { loadAchievements, processRunCompletion, getAllCosmetics, isCosmeticUnlocked, selectCosmetic, getProgressionStatus } from './js/progression.js';
+import { loadAchievements, checkAchievements, processRunCompletion, getAllCosmetics, isCosmeticUnlocked, selectCosmetic, getProgressionStatus } from './js/progression.js';
 // PWA imports disabled for now
 // import { registerServiceWorker, initInstallPrompt, checkPostRunInstallTriggers, showInstallPrompt } from './js/pwa.js';
 import { initDebugPanel } from './js/debug.js';
@@ -151,9 +151,9 @@ await initApp();
       case 'sparkle':
         // Sparkly, twinkling effect with varied sizes
         return {
-          count: 35,           // Dense sparkle burst
-          size: 3.0,           // Bigger stars
-          sizeVar: [0.6, 2.2], // Wide size variation for twinkling
+          count: 50,           // Dense sparkle burst
+          size: 5.0,           // Big stars
+          sizeVar: [0.7, 2.5], // Wide size variation for twinkling
           speed: [60, 160],    // Slower, more gentle
           life: [0.5, 0.8],    // Longer life for twinkle
           shape: 'star',       // Star shape
@@ -163,9 +163,9 @@ await initApp();
       case 'rainbow':
         // Flowing, smooth rainbow trail
         return {
-          count: 30,
-          size: 3.5,
-          sizeVar: [0.85, 1.4],
+          count: 45,
+          size: 5.5,
+          sizeVar: [0.9, 1.5],
           speed: [90, 260],
           life: [0.3, 0.6],
           shape: 'circle',
@@ -175,9 +175,9 @@ await initApp();
       case 'inferno':
         // Fire-like effect: upward bias, varied sizes
         return {
-          count: 40,           // Dense like flames
-          size: 3.5,           // Larger particles
-          sizeVar: [0.6, 2.0], // Varied like flames
+          count: 55,           // Very dense like flames
+          size: 5.0,           // Much larger particles
+          sizeVar: [0.7, 2.2], // Varied like flames
           speed: [120, 320],   // Fast and chaotic
           life: [0.2, 0.4],    // Short-lived like fire
           shape: 'circle',
@@ -188,9 +188,9 @@ await initApp();
       case 'lightning':
         // Quick, electric bolts - fast and short
         return {
-          count: 25,           // More bolts for impact
-          size: 2.5,           // Thicker bolts
-          sizeVar: [1.2, 3.5], // Some very long streaks
+          count: 40,           // More bolts for impact
+          size: 4.0,           // Much thicker bolts
+          sizeVar: [1.5, 4.0], // Some very long streaks
           speed: [350, 550],   // Very fast!
           life: [0.15, 0.3],   // Short duration
           shape: 'line',       // Line shape for lightning bolts
@@ -201,9 +201,9 @@ await initApp();
       case 'neon':
         // Glowing neon with medium persistence
         return {
-          count: 28,
-          size: 4.0,           // Large glow
-          sizeVar: [0.9, 1.3], // More uniform size
+          count: 42,
+          size: 6.0,           // Very large glow
+          sizeVar: [0.9, 1.4], // More uniform size
           speed: [90, 200],    // Medium speed
           life: [0.4, 0.7],    // Medium-long life
           shape: 'circle',
@@ -214,9 +214,9 @@ await initApp();
       case 'cosmic':
         // Mystical, swirling cosmic dust
         return {
-          count: 35,
-          size: 2.8,
-          sizeVar: [0.6, 1.8],
+          count: 50,
+          size: 4.5,
+          sizeVar: [0.7, 2.0],
           speed: [80, 220],
           life: [0.45, 0.75],  // Long-lasting
           shape: 'circle',
@@ -227,9 +227,9 @@ await initApp();
       default:
         // Default trail
         return {
-          count: 25,
-          size: 3.2,
-          sizeVar: [0.85, 1.4],
+          count: 40,
+          size: 5.0,
+          sizeVar: [0.9, 1.5],
           speed: [100, 280],
           life: [0.3, 0.6],
           shape: 'circle',
@@ -823,8 +823,10 @@ await initApp();
    * Show achievement unlock toast (mid-run)
    */
   function showAchievementToast(achievement) {
+    console.log('[Achievement Toast]', achievement);
     achievementToastTitle.textContent = achievement.name;
-    achievementToastXp.textContent = `+${achievement.reward.xp} XP`;
+    const xpValue = achievement.reward?.xp || 0;
+    achievementToastXp.textContent = `+${xpValue} XP`;
     achievementToast.classList.add('show');
 
     // Flash good effect
@@ -1566,30 +1568,44 @@ await initApp();
         glow.hueOffset = (glow.hueOffset + 360 * dt) % 360;
       }
 
-      // Spawn rainbow trail particles during animation
+      // Spawn trail particles during animation using trail configuration
       if(Math.random() < 0.3){
         const bx = state.cx + Math.cos(state.ballAngle) * state.ballTweenRadius;
         const by = state.cy + Math.sin(state.ballAngle) * state.ballTweenRadius;
 
-        // Slow global shift with variation for theme-based glow colors
-        const glowOffset = (Date.now() / 15 + rand(-20, 20)) % 360;
+        // Use trail config for animation particles too
+        const config = getTrailConfig(playerData.cosmetics.trailId);
+        const particlesPerFrame = Math.ceil(config.count / 15); // Scale down for per-frame spawning
 
-        for(let i = 0; i < 3; i++){
-          const a = Math.random() * Math.PI * 2;
-          const s = rand(90, 260);
-          const initialLife = rand(0.22, 0.52);
-          state.particles.push({
+        for(let i = 0; i < particlesPerFrame; i++){
+          let a = Math.random() * Math.PI * 2;
+
+          // Apply upward bias if configured
+          if(config.upwardBias){
+            a += config.upwardBias * Math.PI;
+          }
+
+          const s = rand(config.speed[0], config.speed[1]);
+          const initialLife = rand(config.life[0], config.life[1]);
+
+          const particle = {
             x: bx,
             y: by,
             vx: Math.cos(a) * s,
             vy: Math.sin(a) * s,
             life: initialLife,
             maxLife: initialLife,
-            r: 1.5 * rand(0.85, 1.35),
-            glowOffset: glowOffset,
-            friction: 2.6,
-            shape: 'circle'
-          });
+            r: config.size * rand(config.sizeVar[0], config.sizeVar[1]),
+            friction: config.friction,
+            shape: config.shape
+          };
+
+          // Add special properties
+          if(config.spiral) particle.spiral = true;
+          if(config.glow) particle.glow = true;
+          if(config.stretch) particle.stretch = true;
+
+          state.particles.push(particle);
         }
       }
 
